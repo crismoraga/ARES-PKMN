@@ -97,14 +97,14 @@ Consulta el avance y reanuda con:
 .\ARES.ps1 resume -Game both -Background
 ```
 
-Para una prueba acotada, ejecuta en primer plano `\.\ARES.ps1 run -Game firered -MaxFrames 20000`; guarda estado/checkpoint al salir, pero código 2 significa que alcanzó el límite antes de terminar. Las campañas normales no tienen límite total. Para pedir guardado o parada ordenada de workers lanzados con la ruta por defecto:
+Para una prueba acotada, ejecuta en primer plano `.\ARES.ps1 run -Game firered -MaxFrames 20000`; guarda estado/checkpoint al salir, pero código 2 significa que alcanzó el límite antes de terminar. Las campañas normales no tienen límite total. Para pedir guardado o parada ordenada de workers lanzados con la ruta por defecto:
 
 ```powershell
 .\.venv\Scripts\python.exe -m scripts.run_campaign --game both --checkpoint
 .\.venv\Scripts\python.exe -m scripts.run_campaign --game both --stop
 ```
 
-`--stop` solicita checkpoint y cierre ordenado; reanuda luego con `\.\ARES.ps1 resume -Game both`. No mates el proceso desde el administrador de tareas si puedes usar esa parada.
+`--stop` solicita checkpoint y cierre ordenado; reanuda luego con `.\ARES.ps1 resume -Game both`. No mates el proceso desde el administrador de tareas si puedes usar esa parada.
 
 ## Entrenamiento visible
 
@@ -116,7 +116,7 @@ New-Item -ItemType Directory -Force artifacts | Out-Null
   Tee-Object -FilePath artifacts\training-live.log
 ```
 
-La consola imprime métricas JSON durante VICReg/Trajectory Balance y evaluación PPO; `Tee-Object` conserva una copia en `artifacts\training-live.log`. Para que la campaña use esos pesos, deja terminar el entrenamiento y después lánzala. Si prefieres monitorizar un entrenamiento de fondo ya iniciado mediante `\.\ARES.ps1 train -Background`, consulta su ruta en `artifacts\processes\latest.json` y sigue el `stdout` con `Get-Content <ruta-stdout> -Wait`.
+La consola imprime métricas JSON durante VICReg/Trajectory Balance y evaluación PPO; `Tee-Object` conserva una copia en `artifacts\training-live.log`. Para que la campaña use esos pesos, deja terminar el entrenamiento y después lánzala. Si prefieres monitorizar un entrenamiento de fondo ya iniciado mediante `.\ARES.ps1 train -Background`, consulta su ruta en `artifacts\processes\latest.json` y sigue el `stdout` con `Get-Content <ruta-stdout> -Wait`.
 
 La ventana del emulador muestra métricas de campaña; el entrenamiento imprime sus métricas en la consola de entrenamiento. Son flujos separados. Consulta [monitoreo en vivo](docs/MONITOREO_EN_VIVO.md) para comandos, rutas y recuperación.
 
