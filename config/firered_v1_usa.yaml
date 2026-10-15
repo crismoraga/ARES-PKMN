@@ -1,0 +1,58 @@
+game: firered
+rom_sha1: 41cb23d8dccc8ebd7c649cd8fbb58eeace6e2fdc
+provenance:
+  rom_sha1: 41cb23d8dccc8ebd7c649cd8fbb58eeace6e2fdc
+  source_commit: 037335f4c725d7c9aecdac87066f2002b4bd7e14
+  symbols_commit: 3b401eaf14f193946899eb7c056d5ac02a470126
+  repository: https://github.com/pret/pokefirered
+  symbols_sha256: 6f9d2929b78d0b723180653082c9a115b4b876657af8ab1c0493b4d14151f7b0
+memory:
+  game: firered
+  rom_sha1: 41cb23d8dccc8ebd7c649cd8fbb58eeace6e2fdc
+  save1_ptr: 50352136
+  save2_ptr: 50352140
+  party: 33702532
+  party_count: 33701929
+  battle_mons: 33700836
+  battle_flags: 33696588
+  action_cursor: 33701880
+  move_cursor: 33701884
+  layout: 50352192
+  avatar: 33779832
+  objects: 33779256
+  script: 50335408
+  tasks: 50352272
+  main: 50344176
+  map_header: 33779196
+  bag_pockets: 33790092
+  flags_offset: 3808
+  vars_offset: 4096
+  encryption_key_offset: 3872
+official_symbols:
+  gSaveBlock1Ptr: 50352136
+  gSaveBlock2Ptr: 50352140
+  gPlayerParty: 33702532
+  gPlayerPartyCount: 33701929
+  gBattleMons: 33700836
+  gBattleTypeFlags: 33696588
+  gActionSelectionCursor: 33701880
+  gMoveSelectionCursor: 33701884
+  VMap: 50352192
+  gPlayerAvatar: 33779832
+  gObjectEvents: 33779256
+  sGlobalScriptContext: 50335408
+  gTasks: 50352272
+  gMain: 50344176
+  gMapHeader: 33779196
+  gBagPockets: 33790092
+map_border:
+  left: 7
+  top: 7
+  right: 8
+  bottom: 7
+layout:
+  battle_pokemon_bytes: 88
+  party_pokemon_bytes: 100
+  object_event_bytes: 36
+  save1_bytes: 15720
+  save2_bytes: 3876

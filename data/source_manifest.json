@@ -1,0 +1,24 @@
+{
+  "mgba": {
+    "version": "0.10.5",
+    "source_commit": "26b7884bc25a5933960f3cdcd98bac1ae14d42e2",
+    "repository": "https://github.com/mgba-emu/mgba"
+  },
+  "firered": {
+    "rom_sha1": "41cb23d8dccc8ebd7c649cd8fbb58eeace6e2fdc",
+    "source_commit": "037335f4c725d7c9aecdac87066f2002b4bd7e14",
+    "symbols_commit": "3b401eaf14f193946899eb7c056d5ac02a470126",
+    "repository": "https://github.com/pret/pokefirered"
+  },
+  "emerald": {
+    "rom_sha1": "f3ae088181bf583e55daf962a92bb46f4f1d07b7",
+    "source_commit": "731ad5bfd6e6f265508d0efcca0ba42f9dcf5881",
+    "symbols_commit": "dba968c67d85caf9595abe12a51ff739d4dc5937",
+    "repository": "https://github.com/pret/pokeemerald"
+  },
+  "scope": {
+    "synthetic_demo_is_native_clearance": false,
+    "risk_fallback_authorized": true,
+    "native_clearance_requires_hall_of_fame": true
+  }
+}

@@ -1,0 +1,58 @@
+game: emerald
+rom_sha1: f3ae088181bf583e55daf962a92bb46f4f1d07b7
+provenance:
+  rom_sha1: f3ae088181bf583e55daf962a92bb46f4f1d07b7
+  source_commit: 731ad5bfd6e6f265508d0efcca0ba42f9dcf5881
+  symbols_commit: dba968c67d85caf9595abe12a51ff739d4dc5937
+  repository: https://github.com/pret/pokeemerald
+  symbols_sha256: a0a134789ca3dda4ae677a91a10fbe5f0d72008b83382ed56a5713d4131807cc
+memory:
+  game: emerald
+  rom_sha1: f3ae088181bf583e55daf962a92bb46f4f1d07b7
+  save1_ptr: 50355596
+  save2_ptr: 50355600
+  party: 33703148
+  party_count: 33703145
+  battle_mons: 33702020
+  battle_flags: 33697772
+  action_cursor: 33703084
+  move_cursor: 33703088
+  layout: 50355648
+  avatar: 33781136
+  objects: 33780560
+  script: 50335296
+  tasks: 50355712
+  main: 50340544
+  map_header: 33780504
+  bag_pockets: 33791448
+  flags_offset: 4720
+  vars_offset: 5020
+  encryption_key_offset: 172
+official_symbols:
+  gSaveBlock1Ptr: 50355596
+  gSaveBlock2Ptr: 50355600
+  gPlayerParty: 33703148
+  gPlayerPartyCount: 33703145
+  gBattleMons: 33702020
+  gBattleTypeFlags: 33697772
+  gActionSelectionCursor: 33703084
+  gMoveSelectionCursor: 33703088
+  gBackupMapLayout: 50355648
+  gPlayerAvatar: 33781136
+  gObjectEvents: 33780560
+  sGlobalScriptContext: 50335296
+  gTasks: 50355712
+  gMain: 50340544
+  gMapHeader: 33780504
+  gBagPockets: 33791448
+map_border:
+  left: 7
+  top: 7
+  right: 8
+  bottom: 7
+layout:
+  battle_pokemon_bytes: 88
+  party_pokemon_bytes: 100
+  object_event_bytes: 36
+  save1_bytes: 15752
+  save2_bytes: 3884

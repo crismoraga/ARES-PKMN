@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ares-pkmn"
+version = "3.0.0"
+description = "Neuro-symbolic generation-three Pokemon controller and reproducible verification laboratory"
+requires-python = ">=3.12,<3.13"
+dependencies = ["numpy==2.0.2", "torch==2.4.1", "scipy==1.15.2", "PyYAML==6.0.2", "z3-solver>=4.13,<5", "pygame==2.6.1"]
+
+[project.optional-dependencies]
+dev = ["pytest==9.0.0", "mypy>=1.15,<2", "types-PyYAML", "hypothesis>=6.130", "build"]
+directml = ["torch-directml==0.2.5.dev240914", "torchvision==0.19.1"]
+
+[project.scripts]
+ares = "scripts.run_campaign:main"
+ares-train = "scripts.train_neural_modules:main"
+ares-verify = "scripts.verify_installation:main"
+ares-setup = "scripts.setup_environment:main"
+
+[tool.setuptools.packages.find]
+include = ["core*", "scripts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["native: requires local matching ROMs and compiled mGBA shim"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["z3", "z3.*", "pygame", "pygame.*", "torch_directml", "torch_directml.*"]
+ignore_missing_imports = true

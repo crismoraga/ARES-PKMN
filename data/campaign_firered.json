@@ -1,0 +1,1232 @@
+{
+  "game": "firered",
+  "milestones": [
+    {
+      "milestone_id": "OAK_ROUTE1_TRIGGER",
+      "description": "OAK ROUTE1 TRIGGER",
+      "completion_flag_id": -1,
+      "target_map_group": 3,
+      "target_map_num": 0,
+      "target_coords": [
+        12,
+        1
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [],
+      "action": "trigger",
+      "script": "PalletTown_EventScript_OakTriggerLeft",
+      "npc_local_id": 0,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16464,
+          "value": 1
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PalletTown",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "STARTER_BULBASAUR",
+      "description": "STARTER BULBASAUR",
+      "completion_flag_id": 2088,
+      "target_map_group": 4,
+      "target_map_num": 3,
+      "target_coords": [
+        8,
+        4
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "OAK_ROUTE1_TRIGGER"
+      ],
+      "action": "interact",
+      "script": "PalletTown_ProfessorOaksLab_EventScript_BulbasaurBall",
+      "npc_local_id": 5,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PalletTown_ProfessorOaksLab",
+      "flag_name": "FLAG_SYS_POKEMON_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "RIVAL_LAB",
+      "description": "RIVAL LAB",
+      "completion_flag_id": -1,
+      "target_map_group": 4,
+      "target_map_num": 3,
+      "target_coords": [
+        6,
+        8
+      ],
+      "required_avg_level": 5,
+      "required_types": [],
+      "dependencies": [
+        "STARTER_BULBASAUR"
+      ],
+      "action": "trigger",
+      "script": "PalletTown_ProfessorOaksLab_EventScript_RivalBattleTriggerMid",
+      "npc_local_id": 0,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16469,
+          "value": 4
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PalletTown_ProfessorOaksLab",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "OAK_PARCEL_PICKUP",
+      "description": "OAK PARCEL PICKUP",
+      "completion_flag_id": -1,
+      "target_map_group": 5,
+      "target_map_num": 3,
+      "target_coords": [
+        2,
+        3
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "RIVAL_LAB"
+      ],
+      "action": "interact",
+      "script": "ViridianCity_Mart_EventScript_Clerk",
+      "npc_local_id": 1,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16471,
+          "value": 1
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "ViridianCity_Mart",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "OAK_PARCEL",
+      "description": "OAK PARCEL",
+      "completion_flag_id": 2089,
+      "target_map_group": 4,
+      "target_map_num": 3,
+      "target_coords": [
+        6,
+        3
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "OAK_PARCEL_PICKUP"
+      ],
+      "action": "interact",
+      "script": "PalletTown_ProfessorOaksLab_EventScript_ProfOak",
+      "npc_local_id": 4,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PalletTown_ProfessorOaksLab",
+      "flag_name": "FLAG_SYS_POKEDEX_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_1_BROCK",
+      "description": "GYM 1 BROCK",
+      "completion_flag_id": 2080,
+      "target_map_group": 6,
+      "target_map_num": 2,
+      "target_coords": [
+        6,
+        5
+      ],
+      "required_avg_level": 14,
+      "required_types": [
+        11,
+        12
+      ],
+      "dependencies": [
+        "OAK_PARCEL"
+      ],
+      "action": "interact",
+      "script": "PewterCity_Gym_EventScript_Brock",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PewterCity_Gym",
+      "flag_name": "FLAG_BADGE01_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "MT_MOON_FOSSIL_GUARD",
+      "description": "MT MOON FOSSIL GUARD",
+      "completion_flag_id": 1450,
+      "target_map_group": 1,
+      "target_map_num": 3,
+      "target_coords": [
+        13,
+        11
+      ],
+      "required_avg_level": 18,
+      "required_types": [],
+      "dependencies": [
+        "GYM_1_BROCK"
+      ],
+      "action": "interact",
+      "script": "MtMoon_B2F_EventScript_Miguel",
+      "npc_local_id": 3,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MtMoon_B2F",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_SUPER_NERD_MIGUEL",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "MOUNT_MOON",
+      "description": "MOUNT MOON",
+      "completion_flag_id": 562,
+      "target_map_group": 1,
+      "target_map_num": 3,
+      "target_coords": [
+        14,
+        7
+      ],
+      "required_avg_level": 18,
+      "required_types": [],
+      "dependencies": [
+        "MT_MOON_FOSSIL_GUARD"
+      ],
+      "action": "interact",
+      "script": "MtMoon_B2F_EventScript_HelixFossil",
+      "npc_local_id": 2,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MtMoon_B2F",
+      "flag_name": "FLAG_GOT_FOSSIL_FROM_MT_MOON",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "CERULEAN_RIVAL",
+      "description": "CERULEAN RIVAL",
+      "completion_flag_id": -1,
+      "target_map_group": 3,
+      "target_map_num": 3,
+      "target_coords": [
+        23,
+        6
+      ],
+      "required_avg_level": 20,
+      "required_types": [],
+      "dependencies": [
+        "MOUNT_MOON"
+      ],
+      "action": "trigger",
+      "script": "CeruleanCity_EventScript_RivalTriggerMid",
+      "npc_local_id": 0,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16466,
+          "value": 1
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "CeruleanCity",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "BILL_RESCUE",
+      "description": "BILL RESCUE",
+      "completion_flag_id": 563,
+      "target_map_group": 30,
+      "target_map_num": 0,
+      "target_coords": [
+        4,
+        5
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "CERULEAN_RIVAL"
+      ],
+      "action": "interact",
+      "script": "Route25_SeaCottage_EventScript_Computer",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "Route25_SeaCottage",
+      "flag_name": "FLAG_HELPED_BILL_IN_SEA_COTTAGE",
+      "puzzle": "bill_teleporter",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SS_TICKET",
+      "description": "SS TICKET",
+      "completion_flag_id": 564,
+      "target_map_group": 30,
+      "target_map_num": 0,
+      "target_coords": [
+        7,
+        5
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "BILL_RESCUE"
+      ],
+      "action": "interact",
+      "script": "Route25_SeaCottage_EventScript_Bill",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "Route25_SeaCottage",
+      "flag_name": "FLAG_GOT_SS_TICKET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_2_MISTY",
+      "description": "GYM 2 MISTY",
+      "completion_flag_id": 2081,
+      "target_map_group": 7,
+      "target_map_num": 5,
+      "target_coords": [
+        8,
+        6
+      ],
+      "required_avg_level": 23,
+      "required_types": [
+        12,
+        13
+      ],
+      "dependencies": [
+        "SS_TICKET"
+      ],
+      "action": "interact",
+      "script": "CeruleanCity_Gym_EventScript_Misty",
+      "npc_local_id": 3,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "CeruleanCity_Gym",
+      "flag_name": "FLAG_BADGE02_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SS_ANNE_CUT",
+      "description": "SS ANNE CUT",
+      "completion_flag_id": 567,
+      "target_map_group": 1,
+      "target_map_num": 11,
+      "target_coords": [
+        5,
+        4
+      ],
+      "required_avg_level": 24,
+      "required_types": [],
+      "dependencies": [
+        "GYM_2_MISTY"
+      ],
+      "action": "interact",
+      "script": "SSAnne_CaptainsOffice_EventScript_Captain",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SSAnne_CaptainsOffice",
+      "flag_name": "FLAG_GOT_HM01",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SURGE_SWITCHES",
+      "description": "SURGE SWITCHES",
+      "completion_flag_id": 612,
+      "target_map_group": 9,
+      "target_map_num": 6,
+      "target_coords": [
+        1,
+        10
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "SS_ANNE_CUT"
+      ],
+      "action": "interact",
+      "script": "VermilionCity_Gym_EventScript_TrashCan1",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        15
+      ],
+      "map_name": "VermilionCity_Gym",
+      "flag_name": "FLAG_FOUND_BOTH_VERMILION_GYM_SWITCHES",
+      "puzzle": "vermilion_switches",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_3_SURGE",
+      "description": "GYM 3 SURGE",
+      "completion_flag_id": 2082,
+      "target_map_group": 9,
+      "target_map_num": 6,
+      "target_coords": [
+        5,
+        2
+      ],
+      "required_avg_level": 28,
+      "required_types": [
+        4
+      ],
+      "dependencies": [
+        "SURGE_SWITCHES"
+      ],
+      "action": "interact",
+      "script": "VermilionCity_Gym_EventScript_LtSurge",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        15
+      ],
+      "map_name": "VermilionCity_Gym",
+      "flag_name": "FLAG_BADGE03_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "CELADON_TEA",
+      "description": "CELADON TEA",
+      "completion_flag_id": 678,
+      "target_map_group": 10,
+      "target_map_num": 7,
+      "target_coords": [
+        2,
+        9
+      ],
+      "required_avg_level": 29,
+      "required_types": [],
+      "dependencies": [
+        "GYM_3_SURGE"
+      ],
+      "action": "interact",
+      "script": "CeladonCity_Condominiums_1F_EventScript_TeaWoman",
+      "npc_local_id": 4,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "CeladonCity_Condominiums_1F",
+      "flag_name": "FLAG_GOT_TEA",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ROCKET_POSTER_GUARD",
+      "description": "ROCKET POSTER GUARD",
+      "completion_flag_id": 1637,
+      "target_map_group": 10,
+      "target_map_num": 14,
+      "target_coords": [
+        11,
+        2
+      ],
+      "required_avg_level": 30,
+      "required_types": [],
+      "dependencies": [
+        "CELADON_TEA"
+      ],
+      "action": "interact",
+      "script": "CeladonCity_GameCorner_EventScript_RocketGrunt",
+      "npc_local_id": 11,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "CeladonCity_GameCorner",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_TEAM_ROCKET_GRUNT_7",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ROCKET_POSTER",
+      "description": "ROCKET POSTER",
+      "completion_flag_id": 621,
+      "target_map_group": 10,
+      "target_map_num": 14,
+      "target_coords": [
+        11,
+        1
+      ],
+      "required_avg_level": 30,
+      "required_types": [],
+      "dependencies": [
+        "ROCKET_POSTER_GUARD"
+      ],
+      "action": "interact",
+      "script": "CeladonCity_GameCorner_EventScript_Poster",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "CeladonCity_GameCorner",
+      "flag_name": "FLAG_OPENED_ROCKET_HIDEOUT",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ROCKET_KEY_GUARD",
+      "description": "ROCKET KEY GUARD",
+      "completion_flag_id": 1648,
+      "target_map_group": 1,
+      "target_map_num": 45,
+      "target_coords": [
+        4,
+        2
+      ],
+      "required_avg_level": 32,
+      "required_types": [],
+      "dependencies": [
+        "ROCKET_POSTER"
+      ],
+      "action": "interact",
+      "script": "RocketHideout_B4F_EventScript_Grunt1",
+      "npc_local_id": 3,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RocketHideout_B4F",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_TEAM_ROCKET_GRUNT_18",
+      "puzzle": "rocket_spinners",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ROCKET_LIFT_KEY",
+      "description": "ROCKET LIFT KEY",
+      "completion_flag_id": 677,
+      "target_map_group": 1,
+      "target_map_num": 45,
+      "target_coords": [
+        3,
+        2
+      ],
+      "required_avg_level": 32,
+      "required_types": [],
+      "dependencies": [
+        "ROCKET_KEY_GUARD"
+      ],
+      "action": "interact",
+      "script": "RocketHideout_B4F_EventScript_LiftKey",
+      "npc_local_id": 4,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RocketHideout_B4F",
+      "flag_name": "FLAG_CAN_USE_ROCKET_HIDEOUT_LIFT",
+      "puzzle": "rocket_spinners",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ROCKET_BOSS_GUARD_LEFT",
+      "description": "ROCKET BOSS GUARD LEFT",
+      "completion_flag_id": 1646,
+      "target_map_group": 1,
+      "target_map_num": 45,
+      "target_coords": [
+        16,
+        14
+      ],
+      "required_avg_level": 33,
+      "required_types": [],
+      "dependencies": [
+        "ROCKET_LIFT_KEY"
+      ],
+      "action": "interact",
+      "script": "RocketHideout_B4F_EventScript_Grunt2",
+      "npc_local_id": 6,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RocketHideout_B4F",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_TEAM_ROCKET_GRUNT_16",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ROCKET_BOSS_GUARD_RIGHT",
+      "description": "ROCKET BOSS GUARD RIGHT",
+      "completion_flag_id": 1647,
+      "target_map_group": 1,
+      "target_map_num": 45,
+      "target_coords": [
+        19,
+        14
+      ],
+      "required_avg_level": 33,
+      "required_types": [],
+      "dependencies": [
+        "ROCKET_BOSS_GUARD_LEFT"
+      ],
+      "action": "interact",
+      "script": "RocketHideout_B4F_EventScript_Grunt3",
+      "npc_local_id": 5,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RocketHideout_B4F",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_TEAM_ROCKET_GRUNT_17",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ROCKET_GIOVANNI",
+      "description": "ROCKET GIOVANNI",
+      "completion_flag_id": 1628,
+      "target_map_group": 1,
+      "target_map_num": 45,
+      "target_coords": [
+        19,
+        4
+      ],
+      "required_avg_level": 34,
+      "required_types": [],
+      "dependencies": [
+        "ROCKET_BOSS_GUARD_RIGHT"
+      ],
+      "action": "interact",
+      "script": "RocketHideout_B4F_EventScript_Giovanni",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RocketHideout_B4F",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_BOSS_GIOVANNI",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SILPH_SCOPE",
+      "description": "SILPH SCOPE",
+      "completion_flag_id": -1,
+      "target_map_group": 1,
+      "target_map_num": 45,
+      "target_coords": [
+        20,
+        5
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "ROCKET_GIOVANNI"
+      ],
+      "action": "interact",
+      "script": "RocketHideout_B4F_EventScript_SilphScope",
+      "npc_local_id": 2,
+      "completion_conditions": [
+        {
+          "kind": "item",
+          "identifier": 359,
+          "value": 1
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RocketHideout_B4F",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_4_ERIKA",
+      "description": "GYM 4 ERIKA",
+      "completion_flag_id": 2083,
+      "target_map_group": 10,
+      "target_map_num": 16,
+      "target_coords": [
+        6,
+        4
+      ],
+      "required_avg_level": 34,
+      "required_types": [
+        10,
+        2
+      ],
+      "dependencies": [
+        "SILPH_SCOPE"
+      ],
+      "action": "interact",
+      "script": "CeladonCity_Gym_EventScript_Erika",
+      "npc_local_id": 7,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        15
+      ],
+      "map_name": "CeladonCity_Gym",
+      "flag_name": "FLAG_BADGE04_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "FUJI_RESCUE",
+      "description": "FUJI RESCUE",
+      "completion_flag_id": 572,
+      "target_map_group": 1,
+      "target_map_num": 94,
+      "target_coords": [
+        11,
+        4
+      ],
+      "required_avg_level": 36,
+      "required_types": [],
+      "dependencies": [
+        "GYM_4_ERIKA"
+      ],
+      "action": "interact",
+      "script": "PokemonTower_7F_EventScript_MrFuji",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PokemonTower_7F",
+      "flag_name": "FLAG_RESCUED_MR_FUJI",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "POKE_FLUTE",
+      "description": "POKE FLUTE",
+      "completion_flag_id": 573,
+      "target_map_group": 8,
+      "target_map_num": 2,
+      "target_coords": [
+        3,
+        3
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "FUJI_RESCUE"
+      ],
+      "action": "interact",
+      "script": "LavenderTown_VolunteerPokemonHouse_EventScript_MrFuji",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "LavenderTown_VolunteerPokemonHouse",
+      "flag_name": "FLAG_GOT_POKE_FLUTE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SAFARI_GOLD_TEETH",
+      "description": "SAFARI GOLD TEETH",
+      "completion_flag_id": 393,
+      "target_map_group": 1,
+      "target_map_num": 66,
+      "target_coords": [
+        28,
+        14
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "POKE_FLUTE"
+      ],
+      "action": "interact",
+      "script": "SafariZone_West_EventScript_ItemGoldTeeth",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SafariZone_West",
+      "flag_name": "FLAG_HIDE_SAFARI_ZONE_WEST_GOLD_TEETH",
+      "puzzle": "safari_steps",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "HM_SURF",
+      "description": "HM SURF",
+      "completion_flag_id": 569,
+      "target_map_group": 1,
+      "target_map_num": 71,
+      "target_coords": [
+        6,
+        5
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "SAFARI_GOLD_TEETH"
+      ],
+      "action": "interact",
+      "script": "SafariZone_SecretHouse_EventScript_Attendant",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SafariZone_SecretHouse",
+      "flag_name": "FLAG_GOT_HM03",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "HM_STRENGTH",
+      "description": "HM STRENGTH",
+      "completion_flag_id": 570,
+      "target_map_group": 11,
+      "target_map_num": 7,
+      "target_coords": [
+        3,
+        5
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "HM_SURF"
+      ],
+      "action": "interact",
+      "script": "FuchsiaCity_WardensHouse_EventScript_Warden",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "FuchsiaCity_WardensHouse",
+      "flag_name": "FLAG_GOT_HM04",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_5_KOGA",
+      "description": "GYM 5 KOGA",
+      "completion_flag_id": 2084,
+      "target_map_group": 11,
+      "target_map_num": 3,
+      "target_coords": [
+        7,
+        13
+      ],
+      "required_avg_level": 43,
+      "required_types": [
+        14,
+        4
+      ],
+      "dependencies": [
+        "HM_STRENGTH"
+      ],
+      "action": "interact",
+      "script": "FuchsiaCity_Gym_EventScript_Koga",
+      "npc_local_id": 7,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "FuchsiaCity_Gym",
+      "flag_name": "FLAG_BADGE05_GET",
+      "puzzle": "koga_invisible_walls",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SILPH_CARD_KEY",
+      "description": "SILPH CARD KEY",
+      "completion_flag_id": 402,
+      "target_map_group": 1,
+      "target_map_num": 51,
+      "target_coords": [
+        22,
+        21
+      ],
+      "required_avg_level": 43,
+      "required_types": [],
+      "dependencies": [
+        "GYM_5_KOGA"
+      ],
+      "action": "interact",
+      "script": "SilphCo_5F_EventScript_ItemCardKey",
+      "npc_local_id": 8,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SilphCo_5F",
+      "flag_name": "FLAG_HIDE_SILPH_CO_5F_CARD_KEY",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SILPH_GIOVANNI",
+      "description": "SILPH GIOVANNI",
+      "completion_flag_id": 62,
+      "target_map_group": 1,
+      "target_map_num": 57,
+      "target_coords": [
+        5,
+        15
+      ],
+      "required_avg_level": 45,
+      "required_types": [],
+      "dependencies": [
+        "SILPH_CARD_KEY"
+      ],
+      "action": "trigger",
+      "script": "SilphCo_11F_EventScript_GiovanniTriggerLeft",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SilphCo_11F",
+      "flag_name": "FLAG_HIDE_SAFFRON_ROCKETS",
+      "puzzle": "silph_teleporters",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SILPH_CO",
+      "description": "SILPH CO",
+      "completion_flag_id": 592,
+      "target_map_group": 1,
+      "target_map_num": 57,
+      "target_coords": [
+        9,
+        9
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "SILPH_GIOVANNI"
+      ],
+      "action": "interact",
+      "script": "SilphCo_11F_EventScript_President",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SilphCo_11F",
+      "flag_name": "FLAG_GOT_MASTER_BALL_FROM_SILPH",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_6_SABRINA",
+      "description": "GYM 6 SABRINA",
+      "completion_flag_id": 2085,
+      "target_map_group": 14,
+      "target_map_num": 3,
+      "target_coords": [
+        14,
+        11
+      ],
+      "required_avg_level": 46,
+      "required_types": [
+        6,
+        7,
+        17
+      ],
+      "dependencies": [
+        "SILPH_CO"
+      ],
+      "action": "interact",
+      "script": "SaffronCity_Gym_EventScript_Sabrina",
+      "npc_local_id": 7,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SaffronCity_Gym",
+      "flag_name": "FLAG_BADGE06_GET",
+      "puzzle": "saffron_teleporters",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "MANSION_SECRET_KEY",
+      "description": "MANSION SECRET KEY",
+      "completion_flag_id": 424,
+      "target_map_group": 1,
+      "target_map_num": 62,
+      "target_coords": [
+        5,
+        7
+      ],
+      "required_avg_level": 47,
+      "required_types": [],
+      "dependencies": [
+        "GYM_6_SABRINA"
+      ],
+      "action": "interact",
+      "script": "PokemonMansion_B1F_EventScript_ItemSecretKey",
+      "npc_local_id": 6,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        57
+      ],
+      "map_name": "PokemonMansion_B1F",
+      "flag_name": "FLAG_HIDE_POKEMON_MANSION_B1F_SECRET_KEY",
+      "puzzle": "mansion_statues",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_7_BLAINE",
+      "description": "GYM 7 BLAINE",
+      "completion_flag_id": 2086,
+      "target_map_group": 12,
+      "target_map_num": 0,
+      "target_coords": [
+        5,
+        4
+      ],
+      "required_avg_level": 49,
+      "required_types": [
+        11,
+        4,
+        5
+      ],
+      "dependencies": [
+        "MANSION_SECRET_KEY"
+      ],
+      "action": "interact",
+      "script": "CinnabarIsland_Gym_EventScript_Blaine",
+      "npc_local_id": 8,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "CinnabarIsland_Gym",
+      "flag_name": "FLAG_BADGE07_GET",
+      "puzzle": "cinnabar_quizzes",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_8_GIOVANNI",
+      "description": "GYM 8 GIOVANNI",
+      "completion_flag_id": 2087,
+      "target_map_group": 5,
+      "target_map_num": 1,
+      "target_coords": [
+        2,
+        2
+      ],
+      "required_avg_level": 54,
+      "required_types": [
+        11,
+        12,
+        15
+      ],
+      "dependencies": [
+        "GYM_7_BLAINE"
+      ],
+      "action": "interact",
+      "script": "ViridianCity_Gym_EventScript_Giovanni",
+      "npc_local_id": 8,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "ViridianCity_Gym",
+      "flag_name": "FLAG_BADGE08_GET",
+      "puzzle": "viridian_spinners",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_LORELEI",
+      "description": "ELITE LORELEI",
+      "completion_flag_id": 1208,
+      "target_map_group": 1,
+      "target_map_num": 75,
+      "target_coords": [
+        6,
+        5
+      ],
+      "required_avg_level": 62,
+      "required_types": [
+        13,
+        6
+      ],
+      "dependencies": [
+        "GYM_8_GIOVANNI"
+      ],
+      "action": "interact",
+      "script": "PokemonLeague_LoreleisRoom_EventScript_Lorelei",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        57,
+        70
+      ],
+      "map_name": "PokemonLeague_LoreleisRoom",
+      "flag_name": "FLAG_DEFEATED_LORELEI",
+      "puzzle": "victory_road_boulders",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_BRUNO",
+      "description": "ELITE BRUNO",
+      "completion_flag_id": 1209,
+      "target_map_group": 1,
+      "target_map_num": 76,
+      "target_coords": [
+        6,
+        5
+      ],
+      "required_avg_level": 62,
+      "required_types": [
+        11,
+        14
+      ],
+      "dependencies": [
+        "ELITE_LORELEI"
+      ],
+      "action": "interact",
+      "script": "PokemonLeague_BrunosRoom_EventScript_Bruno",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PokemonLeague_BrunosRoom",
+      "flag_name": "FLAG_DEFEATED_BRUNO",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_AGATHA",
+      "description": "ELITE AGATHA",
+      "completion_flag_id": 1210,
+      "target_map_group": 1,
+      "target_map_num": 77,
+      "target_coords": [
+        6,
+        5
+      ],
+      "required_avg_level": 62,
+      "required_types": [
+        14,
+        4
+      ],
+      "dependencies": [
+        "ELITE_BRUNO"
+      ],
+      "action": "interact",
+      "script": "PokemonLeague_AgathasRoom_EventScript_Agatha",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PokemonLeague_AgathasRoom",
+      "flag_name": "FLAG_DEFEATED_AGATHA",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_LANCE",
+      "description": "ELITE LANCE",
+      "completion_flag_id": 1211,
+      "target_map_group": 1,
+      "target_map_num": 78,
+      "target_coords": [
+        6,
+        8
+      ],
+      "required_avg_level": 64,
+      "required_types": [
+        15,
+        13
+      ],
+      "dependencies": [
+        "ELITE_AGATHA"
+      ],
+      "action": "interact",
+      "script": "PokemonLeague_LancesRoom_EventScript_Lance",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PokemonLeague_LancesRoom",
+      "flag_name": "FLAG_DEFEATED_LANCE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "CHAMPION",
+      "description": "CHAMPION",
+      "completion_flag_id": 1212,
+      "target_map_group": 1,
+      "target_map_num": 79,
+      "target_coords": [
+        6,
+        18
+      ],
+      "required_avg_level": 65,
+      "required_types": [
+        11,
+        15,
+        13,
+        14
+      ],
+      "dependencies": [
+        "ELITE_LANCE"
+      ],
+      "action": "trigger",
+      "script": "PokemonLeague_ChampionsRoom_EventScript_EnterRoom",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PokemonLeague_ChampionsRoom",
+      "flag_name": "FLAG_DEFEATED_CHAMP",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_FOUR",
+      "description": "ELITE FOUR",
+      "completion_flag_id": 2092,
+      "target_map_group": 1,
+      "target_map_num": 80,
+      "target_coords": [
+        5,
+        11
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "CHAMPION"
+      ],
+      "action": "trigger",
+      "script": "PokemonLeague_HallOfFame_EventScript_EnterRoom",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PokemonLeague_HallOfFame",
+      "flag_name": "FLAG_SYS_GAME_CLEAR",
+      "puzzle": "",
+      "menu_choice": 0
+    }
+  ],
+  "certification": "source-backed DAG; native execution evidence required separately"
+}

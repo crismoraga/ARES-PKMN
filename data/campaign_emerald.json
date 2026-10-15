@@ -1,0 +1,1565 @@
+{
+  "game": "emerald",
+  "milestones": [
+    {
+      "milestone_id": "SET_CLOCK",
+      "description": "SET CLOCK",
+      "completion_flag_id": 81,
+      "target_map_group": 1,
+      "target_map_num": 1,
+      "target_coords": [
+        5,
+        1
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [],
+      "action": "interact",
+      "script": "LittlerootTown_BrendansHouse_2F_EventScript_WallClock",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "LittlerootTown_BrendansHouse_2F",
+      "flag_name": "FLAG_SET_WALL_CLOCK",
+      "puzzle": "wall_clock",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "WATCH_TV_REPORT",
+      "description": "WATCH TV REPORT",
+      "completion_flag_id": -1,
+      "target_map_group": 1,
+      "target_map_num": 0,
+      "target_coords": [
+        2,
+        6
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "SET_CLOCK"
+      ],
+      "action": "interact",
+      "script": "PlayersHouse_1F_EventScript_Mom",
+      "npc_local_id": 1,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16530,
+          "value": 7
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "LittlerootTown_BrendansHouse_1F",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "MEET_RIVAL",
+      "description": "MEET RIVAL",
+      "completion_flag_id": -1,
+      "target_map_group": 1,
+      "target_map_num": 3,
+      "target_coords": [
+        5,
+        4
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "WATCH_TV_REPORT"
+      ],
+      "action": "interact",
+      "script": "LittlerootTown_MaysHouse_2F_EventScript_RivalsPokeBall",
+      "npc_local_id": 16,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16525,
+          "value": 3
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "LittlerootTown_MaysHouse_2F",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "BIRCH_RESCUE_TRIGGER",
+      "description": "BIRCH RESCUE TRIGGER",
+      "completion_flag_id": -1,
+      "target_map_group": 0,
+      "target_map_num": 16,
+      "target_coords": [
+        10,
+        19
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "MEET_RIVAL"
+      ],
+      "action": "trigger",
+      "script": "Route101_EventScript_StartBirchRescue",
+      "npc_local_id": 0,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16480,
+          "value": 2
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "Route101",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "STARTER_MUDKIP",
+      "description": "STARTER MUDKIP",
+      "completion_flag_id": 82,
+      "target_map_group": 0,
+      "target_map_num": 16,
+      "target_coords": [
+        7,
+        14
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "BIRCH_RESCUE_TRIGGER"
+      ],
+      "action": "interact",
+      "script": "Route101_EventScript_BirchsBag",
+      "npc_local_id": 3,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "Route101",
+      "flag_name": "FLAG_RESCUED_BIRCH",
+      "puzzle": "",
+      "menu_choice": 2
+    },
+    {
+      "milestone_id": "BIRCH_LAB_STARTER",
+      "description": "BIRCH LAB STARTER",
+      "completion_flag_id": 2144,
+      "target_map_group": 1,
+      "target_map_num": 4,
+      "target_coords": [
+        6,
+        4
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "STARTER_MUDKIP"
+      ],
+      "action": "interact",
+      "script": "LittlerootTown_ProfessorBirchsLab_EventScript_Birch",
+      "npc_local_id": 2,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "LittlerootTown_ProfessorBirchsLab",
+      "flag_name": "FLAG_SYS_POKEMON_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "RIVAL_ROUTE103",
+      "description": "RIVAL ROUTE103",
+      "completion_flag_id": 130,
+      "target_map_group": 0,
+      "target_map_num": 18,
+      "target_coords": [
+        10,
+        3
+      ],
+      "required_avg_level": 7,
+      "required_types": [],
+      "dependencies": [
+        "BIRCH_LAB_STARTER"
+      ],
+      "action": "interact",
+      "script": "Route103_EventScript_Rival",
+      "npc_local_id": 2,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "Route103",
+      "flag_name": "FLAG_DEFEATED_RIVAL_ROUTE103",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "POKEDEX",
+      "description": "POKEDEX",
+      "completion_flag_id": 2145,
+      "target_map_group": 1,
+      "target_map_num": 4,
+      "target_coords": [
+        6,
+        4
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "RIVAL_ROUTE103"
+      ],
+      "action": "interact",
+      "script": "LittlerootTown_ProfessorBirchsLab_EventScript_Birch",
+      "npc_local_id": 2,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "LittlerootTown_ProfessorBirchsLab",
+      "flag_name": "FLAG_SYS_POKEDEX_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "WALLY_TUTORIAL",
+      "description": "WALLY TUTORIAL",
+      "completion_flag_id": -1,
+      "target_map_group": 8,
+      "target_map_num": 1,
+      "target_coords": [
+        4,
+        2
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "POKEDEX"
+      ],
+      "action": "interact",
+      "script": "PetalburgCity_Gym_EventScript_Norman",
+      "npc_local_id": 1,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16517,
+          "value": 2
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PetalburgCity_Gym",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "PETALBURG_WOODS_AQUA",
+      "description": "PETALBURG WOODS AQUA",
+      "completion_flag_id": -1,
+      "target_map_group": 24,
+      "target_map_num": 11,
+      "target_coords": [
+        26,
+        23
+      ],
+      "required_avg_level": 9,
+      "required_types": [],
+      "dependencies": [
+        "WALLY_TUTORIAL"
+      ],
+      "action": "trigger",
+      "script": "PetalburgWoods_EventScript_DevonResearcherLeft",
+      "npc_local_id": 0,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16536,
+          "value": 1
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PetalburgWoods",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_1_ROXANNE",
+      "description": "GYM 1 ROXANNE",
+      "completion_flag_id": 2151,
+      "target_map_group": 11,
+      "target_map_num": 3,
+      "target_coords": [
+        5,
+        2
+      ],
+      "required_avg_level": 16,
+      "required_types": [
+        11,
+        12
+      ],
+      "dependencies": [
+        "PETALBURG_WOODS_AQUA"
+      ],
+      "action": "interact",
+      "script": "RustboroCity_Gym_EventScript_Roxanne",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RustboroCity_Gym",
+      "flag_name": "FLAG_BADGE01_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "DEVON_GOODS",
+      "description": "DEVON GOODS",
+      "completion_flag_id": 143,
+      "target_map_group": 24,
+      "target_map_num": 4,
+      "target_coords": [
+        14,
+        5
+      ],
+      "required_avg_level": 17,
+      "required_types": [],
+      "dependencies": [
+        "GYM_1_ROXANNE"
+      ],
+      "action": "interact",
+      "script": "RusturfTunnel_EventScript_Grunt",
+      "npc_local_id": 6,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RusturfTunnel",
+      "flag_name": "FLAG_RECOVERED_DEVON_GOODS",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "DEVON_RETURN",
+      "description": "DEVON RETURN",
+      "completion_flag_id": 144,
+      "target_map_group": 0,
+      "target_map_num": 3,
+      "target_coords": [
+        30,
+        10
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "DEVON_GOODS"
+      ],
+      "action": "interact",
+      "script": "RustboroCity_EventScript_DevonEmployee1",
+      "npc_local_id": 9,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RustboroCity",
+      "flag_name": "FLAG_RETURNED_DEVON_GOODS",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "DEVON_POKENAV",
+      "description": "DEVON POKENAV",
+      "completion_flag_id": 188,
+      "target_map_group": 11,
+      "target_map_num": 2,
+      "target_coords": [
+        17,
+        5
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "DEVON_RETURN"
+      ],
+      "action": "interact",
+      "script": "RustboroCity_DevonCorp_3F_EventScript_MrStone",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RustboroCity_DevonCorp_3F",
+      "flag_name": "FLAG_RECEIVED_POKENAV",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "HM_CUT",
+      "description": "HM CUT",
+      "completion_flag_id": 137,
+      "target_map_group": 11,
+      "target_map_num": 11,
+      "target_coords": [
+        7,
+        5
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "DEVON_POKENAV"
+      ],
+      "action": "interact",
+      "script": "RustboroCity_CuttersHouse_EventScript_Cutter",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "RustboroCity_CuttersHouse",
+      "flag_name": "FLAG_RECEIVED_HM_CUT",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "STEVEN_LETTER",
+      "description": "STEVEN LETTER",
+      "completion_flag_id": 189,
+      "target_map_group": 24,
+      "target_map_num": 10,
+      "target_coords": [
+        7,
+        8
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "HM_CUT"
+      ],
+      "action": "interact",
+      "script": "GraniteCave_StevensRoom_EventScript_Steven",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "GraniteCave_StevensRoom",
+      "flag_name": "FLAG_DELIVERED_STEVEN_LETTER",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_2_BRAWLY",
+      "description": "GYM 2 BRAWLY",
+      "completion_flag_id": 2152,
+      "target_map_group": 3,
+      "target_map_num": 3,
+      "target_coords": [
+        4,
+        3
+      ],
+      "required_avg_level": 20,
+      "required_types": [
+        2,
+        14
+      ],
+      "dependencies": [
+        "STEVEN_LETTER"
+      ],
+      "action": "interact",
+      "script": "DewfordTown_Gym_EventScript_Brawly",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "DewfordTown_Gym",
+      "flag_name": "FLAG_BADGE02_GET",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "STERN_GOODS",
+      "description": "STERN GOODS",
+      "completion_flag_id": 149,
+      "target_map_group": 9,
+      "target_map_num": 8,
+      "target_coords": [
+        13,
+        6
+      ],
+      "required_avg_level": 21,
+      "required_types": [],
+      "dependencies": [
+        "GYM_2_BRAWLY"
+      ],
+      "action": "interact",
+      "script": "SlateportCity_OceanicMuseum_2F_EventScript_CaptStern",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SlateportCity_OceanicMuseum_2F",
+      "flag_name": "FLAG_DELIVERED_DEVON_GOODS",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "RIVAL_ROUTE110",
+      "description": "RIVAL ROUTE110",
+      "completion_flag_id": 919,
+      "target_map_group": 0,
+      "target_map_num": 25,
+      "target_coords": [
+        33,
+        56
+      ],
+      "required_avg_level": 22,
+      "required_types": [],
+      "dependencies": [
+        "STERN_GOODS"
+      ],
+      "action": "trigger",
+      "script": "Route110_EventScript_RivalTrigger1",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "Route110",
+      "flag_name": "FLAG_HIDE_ROUTE_110_RIVAL",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "WALLY_MAUVILLE",
+      "description": "WALLY MAUVILLE",
+      "completion_flag_id": 190,
+      "target_map_group": 0,
+      "target_map_num": 2,
+      "target_coords": [
+        8,
+        6
+      ],
+      "required_avg_level": 23,
+      "required_types": [],
+      "dependencies": [
+        "RIVAL_ROUTE110"
+      ],
+      "action": "interact",
+      "script": "MauvilleCity_EventScript_Wally",
+      "npc_local_id": 6,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MauvilleCity",
+      "flag_name": "FLAG_DEFEATED_WALLY_MAUVILLE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_3_WATTSON",
+      "description": "GYM 3 WATTSON",
+      "completion_flag_id": 2153,
+      "target_map_group": 10,
+      "target_map_num": 0,
+      "target_coords": [
+        5,
+        2
+      ],
+      "required_avg_level": 25,
+      "required_types": [
+        4
+      ],
+      "dependencies": [
+        "WALLY_MAUVILLE"
+      ],
+      "action": "interact",
+      "script": "MauvilleCity_Gym_EventScript_Wattson",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MauvilleCity_Gym",
+      "flag_name": "FLAG_BADGE03_GET",
+      "puzzle": "mauville_switches",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "HM_ROCK_SMASH",
+      "description": "HM ROCK SMASH",
+      "completion_flag_id": 107,
+      "target_map_group": 10,
+      "target_map_num": 2,
+      "target_coords": [
+        4,
+        4
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "GYM_3_WATTSON"
+      ],
+      "action": "interact",
+      "script": "MauvilleCity_House1_EventScript_RockSmashDude",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MauvilleCity_House1",
+      "flag_name": "FLAG_RECEIVED_HM_ROCK_SMASH",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "METEOR_FALLS_TEAMS",
+      "description": "METEOR FALLS TEAMS",
+      "completion_flag_id": -1,
+      "target_map_group": 24,
+      "target_map_num": 0,
+      "target_coords": [
+        14,
+        18
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "HM_ROCK_SMASH"
+      ],
+      "action": "trigger",
+      "script": "MeteorFalls_1F_1R_EventScript_MagmaStealsMeteoriteScene",
+      "npc_local_id": 0,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16575,
+          "value": 1
+        }
+      ],
+      "required_items": [],
+      "required_moves": [
+        249
+      ],
+      "map_name": "MeteorFalls_1F_1R",
+      "flag_name": "",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "MT_CHIMNEY",
+      "description": "MT CHIMNEY",
+      "completion_flag_id": 139,
+      "target_map_group": 24,
+      "target_map_num": 12,
+      "target_coords": [
+        13,
+        6
+      ],
+      "required_avg_level": 28,
+      "required_types": [],
+      "dependencies": [
+        "METEOR_FALLS_TEAMS"
+      ],
+      "action": "interact",
+      "script": "MtChimney_EventScript_Maxie",
+      "npc_local_id": 2,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MtChimney",
+      "flag_name": "FLAG_DEFEATED_EVIL_TEAM_MT_CHIMNEY",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_4_FLANNERY",
+      "description": "GYM 4 FLANNERY",
+      "completion_flag_id": 2154,
+      "target_map_group": 4,
+      "target_map_num": 1,
+      "target_coords": [
+        13,
+        9
+      ],
+      "required_avg_level": 31,
+      "required_types": [
+        11,
+        4
+      ],
+      "dependencies": [
+        "MT_CHIMNEY"
+      ],
+      "action": "interact",
+      "script": "LavaridgeTown_Gym_1F_EventScript_Flannery",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "LavaridgeTown_Gym_1F",
+      "flag_name": "FLAG_BADGE04_GET",
+      "puzzle": "lavaridge_holes",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "HM_STRENGTH",
+      "description": "HM STRENGTH",
+      "completion_flag_id": 106,
+      "target_map_group": 24,
+      "target_map_num": 4,
+      "target_coords": [
+        24,
+        5
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "GYM_4_FLANNERY"
+      ],
+      "action": "interact",
+      "script": "EventScript_RockSmash",
+      "npc_local_id": 2,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        249
+      ],
+      "map_name": "RusturfTunnel",
+      "flag_name": "FLAG_RECEIVED_HM_STRENGTH",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "PETALBURG_RANDALL",
+      "description": "PETALBURG RANDALL",
+      "completion_flag_id": 1351,
+      "target_map_group": 8,
+      "target_map_num": 1,
+      "target_coords": [
+        4,
+        81
+      ],
+      "required_avg_level": 32,
+      "required_types": [],
+      "dependencies": [
+        "HM_STRENGTH"
+      ],
+      "action": "interact",
+      "script": "PetalburgCity_Gym_EventScript_Randall",
+      "npc_local_id": 3,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PetalburgCity_Gym",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_RANDALL",
+      "puzzle": "petalburg_rooms",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "PETALBURG_PARKER",
+      "description": "PETALBURG PARKER",
+      "completion_flag_id": 1352,
+      "target_map_group": 8,
+      "target_map_num": 1,
+      "target_coords": [
+        4,
+        42
+      ],
+      "required_avg_level": 32,
+      "required_types": [],
+      "dependencies": [
+        "PETALBURG_RANDALL"
+      ],
+      "action": "interact",
+      "script": "PetalburgCity_Gym_EventScript_Parker",
+      "npc_local_id": 4,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PetalburgCity_Gym",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_PARKER",
+      "puzzle": "petalburg_rooms",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "PETALBURG_JODY",
+      "description": "PETALBURG JODY",
+      "completion_flag_id": 1371,
+      "target_map_group": 8,
+      "target_map_num": 1,
+      "target_coords": [
+        4,
+        16
+      ],
+      "required_avg_level": 33,
+      "required_types": [],
+      "dependencies": [
+        "PETALBURG_PARKER"
+      ],
+      "action": "interact",
+      "script": "PetalburgCity_Gym_EventScript_Jody",
+      "npc_local_id": 7,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PetalburgCity_Gym",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_JODY",
+      "puzzle": "petalburg_rooms",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_5_NORMAN",
+      "description": "GYM 5 NORMAN",
+      "completion_flag_id": 2155,
+      "target_map_group": 8,
+      "target_map_num": 1,
+      "target_coords": [
+        4,
+        2
+      ],
+      "required_avg_level": 33,
+      "required_types": [
+        1
+      ],
+      "dependencies": [
+        "PETALBURG_JODY"
+      ],
+      "action": "interact",
+      "script": "PetalburgCity_Gym_EventScript_Norman",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PetalburgCity_Gym",
+      "flag_name": "FLAG_BADGE05_GET",
+      "puzzle": "petalburg_rooms",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "HM_SURF",
+      "description": "HM SURF",
+      "completion_flag_id": 122,
+      "target_map_group": 8,
+      "target_map_num": 0,
+      "target_coords": [
+        3,
+        4
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "GYM_5_NORMAN"
+      ],
+      "action": "interact",
+      "script": "PetalburgCity_WallysHouse_EventScript_WallysDad",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "PetalburgCity_WallysHouse",
+      "flag_name": "FLAG_RECEIVED_HM_SURF",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "WEATHER_INSTITUTE",
+      "description": "WEATHER INSTITUTE",
+      "completion_flag_id": 890,
+      "target_map_group": 32,
+      "target_map_num": 1,
+      "target_coords": [
+        4,
+        6
+      ],
+      "required_avg_level": 35,
+      "required_types": [],
+      "dependencies": [
+        "HM_SURF"
+      ],
+      "action": "interact",
+      "script": "Route119_WeatherInstitute_2F_EventScript_Shelly",
+      "npc_local_id": 3,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        57
+      ],
+      "map_name": "Route119_WeatherInstitute_2F",
+      "flag_name": "FLAG_HIDE_ROUTE_119_TEAM_AQUA",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "HM_FLY",
+      "description": "HM FLY",
+      "completion_flag_id": 110,
+      "target_map_group": 0,
+      "target_map_num": 34,
+      "target_coords": [
+        25,
+        31
+      ],
+      "required_avg_level": 36,
+      "required_types": [],
+      "dependencies": [
+        "WEATHER_INSTITUTE"
+      ],
+      "action": "trigger",
+      "script": "Route119_EventScript_RivalTrigger1",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "Route119",
+      "flag_name": "FLAG_RECEIVED_HM_FLY",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "DEVON_SCOPE",
+      "description": "DEVON SCOPE",
+      "completion_flag_id": 285,
+      "target_map_group": 0,
+      "target_map_num": 35,
+      "target_coords": [
+        13,
+        15
+      ],
+      "required_avg_level": 36,
+      "required_types": [],
+      "dependencies": [
+        "HM_FLY"
+      ],
+      "action": "interact",
+      "script": "Route120_EventScript_Steven",
+      "npc_local_id": 31,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "Route120",
+      "flag_name": "FLAG_RECEIVED_DEVON_SCOPE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_6_WINONA",
+      "description": "GYM 6 WINONA",
+      "completion_flag_id": 2156,
+      "target_map_group": 12,
+      "target_map_num": 1,
+      "target_coords": [
+        15,
+        2
+      ],
+      "required_avg_level": 38,
+      "required_types": [
+        13,
+        15
+      ],
+      "dependencies": [
+        "DEVON_SCOPE"
+      ],
+      "action": "interact",
+      "script": "FortreeCity_Gym_EventScript_Winona",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "FortreeCity_Gym",
+      "flag_name": "FLAG_BADGE06_GET",
+      "puzzle": "fortree_turnstiles",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "MT_PYRE_EMBLEM",
+      "description": "MT PYRE EMBLEM",
+      "completion_flag_id": -1,
+      "target_map_group": 24,
+      "target_map_num": 22,
+      "target_coords": [
+        23,
+        5
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "GYM_6_WINONA"
+      ],
+      "action": "interact",
+      "script": "MtPyre_Summit_EventScript_OldLady",
+      "npc_local_id": 3,
+      "completion_conditions": [
+        {
+          "kind": "item",
+          "identifier": 375,
+          "value": 1
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MtPyre_Summit",
+      "flag_name": "",
+      "puzzle": "mt_pyre_team_scene",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "MAGMA_HIDEOUT",
+      "description": "MAGMA HIDEOUT",
+      "completion_flag_id": 111,
+      "target_map_group": 24,
+      "target_map_num": 91,
+      "target_coords": [
+        16,
+        21
+      ],
+      "required_avg_level": 40,
+      "required_types": [],
+      "dependencies": [
+        "MT_PYRE_EMBLEM"
+      ],
+      "action": "interact",
+      "script": "MagmaHideout_4F_EventScript_Maxie",
+      "npc_local_id": 6,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        70,
+        249
+      ],
+      "map_name": "MagmaHideout_4F",
+      "flag_name": "FLAG_GROUDON_AWAKENED_MAGMA_HIDEOUT",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SLATEPORT_SUBMARINE",
+      "description": "SLATEPORT SUBMARINE",
+      "completion_flag_id": 112,
+      "target_map_group": 9,
+      "target_map_num": 9,
+      "target_coords": [
+        6,
+        13
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "MAGMA_HIDEOUT"
+      ],
+      "action": "interact",
+      "script": "SlateportCity_Harbor_EventScript_CaptStern",
+      "npc_local_id": 4,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SlateportCity_Harbor",
+      "flag_name": "FLAG_TEAM_AQUA_ESCAPED_IN_SUBMARINE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "AQUA_HIDEOUT",
+      "description": "AQUA HIDEOUT",
+      "completion_flag_id": 924,
+      "target_map_group": 24,
+      "target_map_num": 25,
+      "target_coords": [
+        23,
+        19
+      ],
+      "required_avg_level": 42,
+      "required_types": [],
+      "dependencies": [
+        "SLATEPORT_SUBMARINE"
+      ],
+      "action": "interact",
+      "script": "AquaHideout_B2F_EventScript_Matt",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "AquaHideout_B2F",
+      "flag_name": "FLAG_HIDE_AQUA_HIDEOUT_GRUNTS",
+      "puzzle": "aqua_teleporters",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_7_TATE_LIZA",
+      "description": "GYM 7 TATE LIZA",
+      "completion_flag_id": 2157,
+      "target_map_group": 14,
+      "target_map_num": 0,
+      "target_coords": [
+        23,
+        7
+      ],
+      "required_avg_level": 43,
+      "required_types": [
+        11,
+        7,
+        17
+      ],
+      "dependencies": [
+        "AQUA_HIDEOUT"
+      ],
+      "action": "interact",
+      "script": "MossdeepCity_Gym_EventScript_TateAndLiza",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MossdeepCity_Gym",
+      "flag_name": "FLAG_BADGE07_GET",
+      "puzzle": "mossdeep_arrows",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SPACE_CENTER",
+      "description": "SPACE CENTER",
+      "completion_flag_id": 117,
+      "target_map_group": 14,
+      "target_map_num": 10,
+      "target_coords": [
+        1,
+        8
+      ],
+      "required_avg_level": 44,
+      "required_types": [],
+      "dependencies": [
+        "GYM_7_TATE_LIZA"
+      ],
+      "action": "interact",
+      "script": "MossdeepCity_SpaceCenter_2F_EventScript_Steven",
+      "npc_local_id": 4,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MossdeepCity_SpaceCenter_2F",
+      "flag_name": "FLAG_DEFEATED_MAGMA_SPACE_CENTER",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "HM_DIVE",
+      "description": "HM DIVE",
+      "completion_flag_id": 123,
+      "target_map_group": 14,
+      "target_map_num": 7,
+      "target_coords": [
+        9,
+        6
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "SPACE_CENTER"
+      ],
+      "action": "interact",
+      "script": "MossdeepCity_StevensHouse_EventScript_Steven",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "MossdeepCity_StevensHouse",
+      "flag_name": "FLAG_RECEIVED_HM_DIVE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SEAFLOOR_CAVERN",
+      "description": "SEAFLOOR CAVERN",
+      "completion_flag_id": 946,
+      "target_map_group": 24,
+      "target_map_num": 36,
+      "target_coords": [
+        17,
+        42
+      ],
+      "required_avg_level": 45,
+      "required_types": [],
+      "dependencies": [
+        "HM_DIVE"
+      ],
+      "action": "trigger",
+      "script": "SeafloorCavern_Room9_EventScript_ArchieAwakenKyogre",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        57,
+        70,
+        249,
+        291
+      ],
+      "map_name": "SeafloorCavern_Room9",
+      "flag_name": "FLAG_HIDE_SEAFLOOR_CAVERN_AQUA_GRUNTS",
+      "puzzle": "seafloor_boulders",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "WALLACE_ORIGIN",
+      "description": "WALLACE ORIGIN",
+      "completion_flag_id": 311,
+      "target_map_group": 24,
+      "target_map_num": 42,
+      "target_coords": [
+        9,
+        13
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "SEAFLOOR_CAVERN"
+      ],
+      "action": "interact",
+      "script": "CaveOfOrigin_B1F_EventScript_Wallace",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "CaveOfOrigin_B1F",
+      "flag_name": "FLAG_WALLACE_GOES_TO_SKY_PILLAR",
+      "puzzle": "",
+      "menu_choice": 2
+    },
+    {
+      "milestone_id": "RAYQUAZA_AWAKEN",
+      "description": "RAYQUAZA AWAKEN",
+      "completion_flag_id": -1,
+      "target_map_group": 24,
+      "target_map_num": 85,
+      "target_coords": [
+        14,
+        9
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "WALLACE_ORIGIN"
+      ],
+      "action": "trigger",
+      "script": "SkyPillar_Top_EventScript_AwakenRayquaza",
+      "npc_local_id": 0,
+      "completion_conditions": [
+        {
+          "kind": "var_at_least",
+          "identifier": 16586,
+          "value": 1
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SkyPillar_Top",
+      "flag_name": "",
+      "puzzle": "sky_pillar_cracked_floor",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SOOTOPOLIS_MAXIE",
+      "description": "SOOTOPOLIS MAXIE",
+      "completion_flag_id": 309,
+      "target_map_group": 0,
+      "target_map_num": 7,
+      "target_coords": [
+        29,
+        33
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "RAYQUAZA_AWAKEN"
+      ],
+      "action": "interact",
+      "script": "SootopolisCity_EventScript_Maxie",
+      "npc_local_id": 16,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SootopolisCity",
+      "flag_name": "FLAG_MET_MAXIE_SOOTOPOLIS",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "SOOTOPOLIS_TRUCE",
+      "description": "SOOTOPOLIS TRUCE",
+      "completion_flag_id": 158,
+      "target_map_group": 0,
+      "target_map_num": 7,
+      "target_coords": [
+        31,
+        33
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "SOOTOPOLIS_MAXIE"
+      ],
+      "action": "interact",
+      "script": "SootopolisCity_EventScript_Archie",
+      "npc_local_id": 17,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SootopolisCity",
+      "flag_name": "FLAG_SOOTOPOLIS_ARCHIE_MAXIE_LEAVE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "HM_WATERFALL",
+      "description": "HM WATERFALL",
+      "completion_flag_id": 312,
+      "target_map_group": 0,
+      "target_map_num": 7,
+      "target_coords": [
+        31,
+        18
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "SOOTOPOLIS_TRUCE"
+      ],
+      "action": "interact",
+      "script": "SootopolisCity_EventScript_Wallace",
+      "npc_local_id": 18,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SootopolisCity",
+      "flag_name": "FLAG_RECEIVED_HM_WATERFALL",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "GYM_8_JUAN",
+      "description": "GYM 8 JUAN",
+      "completion_flag_id": 2158,
+      "target_map_group": 15,
+      "target_map_num": 0,
+      "target_coords": [
+        8,
+        2
+      ],
+      "required_avg_level": 47,
+      "required_types": [
+        12,
+        13
+      ],
+      "dependencies": [
+        "HM_WATERFALL"
+      ],
+      "action": "interact",
+      "script": "SootopolisCity_Gym_1F_EventScript_Juan",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SootopolisCity_Gym_1F",
+      "flag_name": "FLAG_BADGE08_GET",
+      "puzzle": "sootopolis_ice",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "VICTORY_ROAD_WALLY",
+      "description": "VICTORY ROAD WALLY",
+      "completion_flag_id": 126,
+      "target_map_group": 24,
+      "target_map_num": 43,
+      "target_coords": [
+        12,
+        25
+      ],
+      "required_avg_level": 52,
+      "required_types": [],
+      "dependencies": [
+        "GYM_8_JUAN"
+      ],
+      "action": "interact",
+      "script": "VictoryRoad_1F_EventScript_EntranceWally",
+      "npc_local_id": 4,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [
+        57,
+        70,
+        249,
+        127
+      ],
+      "map_name": "VictoryRoad_1F",
+      "flag_name": "FLAG_DEFEATED_WALLY_VICTORY_ROAD",
+      "puzzle": "victory_road_boulders",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_SIDNEY",
+      "description": "ELITE SIDNEY",
+      "completion_flag_id": 1275,
+      "target_map_group": 16,
+      "target_map_num": 0,
+      "target_coords": [
+        6,
+        5
+      ],
+      "required_avg_level": 57,
+      "required_types": [
+        1,
+        6
+      ],
+      "dependencies": [
+        "VICTORY_ROAD_WALLY"
+      ],
+      "action": "interact",
+      "script": "EverGrandeCity_SidneysRoom_EventScript_Sidney",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "EverGrandeCity_SidneysRoom",
+      "flag_name": "FLAG_DEFEATED_ELITE_4_SIDNEY",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_PHOEBE",
+      "description": "ELITE PHOEBE",
+      "completion_flag_id": 1276,
+      "target_map_group": 16,
+      "target_map_num": 1,
+      "target_coords": [
+        6,
+        5
+      ],
+      "required_avg_level": 57,
+      "required_types": [
+        7,
+        17
+      ],
+      "dependencies": [
+        "ELITE_SIDNEY"
+      ],
+      "action": "interact",
+      "script": "EverGrandeCity_PhoebesRoom_EventScript_Phoebe",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "EverGrandeCity_PhoebesRoom",
+      "flag_name": "FLAG_DEFEATED_ELITE_4_PHOEBE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_GLACIA",
+      "description": "ELITE GLACIA",
+      "completion_flag_id": 1277,
+      "target_map_group": 16,
+      "target_map_num": 2,
+      "target_coords": [
+        6,
+        5
+      ],
+      "required_avg_level": 58,
+      "required_types": [
+        1,
+        13
+      ],
+      "dependencies": [
+        "ELITE_PHOEBE"
+      ],
+      "action": "interact",
+      "script": "EverGrandeCity_GlaciasRoom_EventScript_Glacia",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "EverGrandeCity_GlaciasRoom",
+      "flag_name": "FLAG_DEFEATED_ELITE_4_GLACIA",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_DRAKE",
+      "description": "ELITE DRAKE",
+      "completion_flag_id": 1278,
+      "target_map_group": 16,
+      "target_map_num": 3,
+      "target_coords": [
+        6,
+        5
+      ],
+      "required_avg_level": 60,
+      "required_types": [
+        15,
+        16
+      ],
+      "dependencies": [
+        "ELITE_GLACIA"
+      ],
+      "action": "interact",
+      "script": "EverGrandeCity_DrakesRoom_EventScript_Drake",
+      "npc_local_id": 1,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "EverGrandeCity_DrakesRoom",
+      "flag_name": "FLAG_DEFEATED_ELITE_4_DRAKE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "CHAMPION",
+      "description": "CHAMPION",
+      "completion_flag_id": 1615,
+      "target_map_group": 16,
+      "target_map_num": 4,
+      "target_coords": [
+        6,
+        11
+      ],
+      "required_avg_level": 62,
+      "required_types": [
+        12,
+        13
+      ],
+      "dependencies": [
+        "ELITE_DRAKE"
+      ],
+      "action": "trigger",
+      "script": "EverGrandeCity_ChampionsRoom_EventScript_EnterRoom",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "EverGrandeCity_ChampionsRoom",
+      "flag_name": "TRAINER_FLAGS_START + TRAINER_WALLACE",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
+      "milestone_id": "ELITE_FOUR",
+      "description": "ELITE FOUR",
+      "completion_flag_id": 2148,
+      "target_map_group": 16,
+      "target_map_num": 11,
+      "target_coords": [
+        7,
+        10
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "CHAMPION"
+      ],
+      "action": "trigger",
+      "script": "EverGrandeCity_HallOfFame_EventScript_EnterHallOfFame",
+      "npc_local_id": 0,
+      "completion_conditions": [],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "EverGrandeCity_HallOfFame",
+      "flag_name": "FLAG_SYS_GAME_CLEAR",
+      "puzzle": "",
+      "menu_choice": 0
+    }
+  ],
+  "certification": "source-backed DAG; native execution evidence required separately"
+}
