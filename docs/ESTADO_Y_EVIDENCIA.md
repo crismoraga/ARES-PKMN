@@ -31,7 +31,9 @@ Comandos completos:
 .\.venv\Scripts\python.exe -m scripts.run_autonomous_verification_demo
 ```
 
-El launcher los ejecuta con `.ARES.ps1 verify`; `-Quick` ejecuta solamente las verificaciones rápidas. Los archivos de resultados se guardan en `artifacts\verification`. Resultado registrado en este checkout: 143 tests aprobados; mypy estricto pasó; entrenamiento y demo finalizaron correctamente. En la ejecución documentada de entrenamiento, se seleccionó CPU después de que la prueba DirectML backward falló. Repite estos comandos en el clon que se pretenda certificar: esos resultados históricos no garantizan el mismo hardware ni un checkout distinto.
+El launcher los ejecuta con `.\ARES.ps1 verify`; `-Quick` ejecuta solamente las verificaciones rápidas. Los archivos de resultados se guardan en `artifacts\verification`. La verificación durante la recuperación del 15 de octubre registró 377 tests aprobados y mypy estricto sobre 75 archivos; los cambios finales del supervisor y sus regresiones tienen además su verificación específica. Logs locales: `artifacts/pytest-autonomy-current.log` y `artifacts/mypy-autonomy-current.log`. Repite los comandos en el clon que se pretenda certificar: esos resultados no garantizan otro checkout o hardware.
+
+El entrenamiento reanudado con `--resume --device cpu` terminó con código cero: VICReg de validación `38.36165 → 38.36165` (se conservó el mejor checkpoint, sin mejora medida), Trajectory Balance `30.36211 → 14.83554` y victorias PPO `92.1875 % → 100 %` en su evaluación de laboratorio. La telemetría guarda el identificador de sesión y sus curvas; `artifacts/training-recovery-live.log` conserva stdout. Esas victorias no corresponden a las campañas nativas.
 
 ## Qué prueba la demo y qué no
 
@@ -46,7 +48,9 @@ Una campaña se marca completa solo al observar en la ROM correcta:
 - Un contador positivo de entradas al Salón de la Fama.
 - Evidencia acompañante: hash ROM esperado, checkpoint/savestate, status final y log de eventos.
 
-El estado de desarrollo consultado para esta documentación todavía no cumple esos criterios. FireRed registraba 5 hitos (242422 frames, 7 combates, 4 victorias, 2 derrotas y 2 debilitados); Emerald registraba 8 hitos (285000 frames, 13 combates, 11 victorias, una derrota y un debilitado). Ambos tenían cero medallas y cero entradas al Hall of Fame. Son estados exploratorios locales, no una certificación ni un benchmark limpio reproducible. Los directorios de campaña pueden contener progreso parcial.
+Las recuperaciones nativas registradas todavía no cumplen esos criterios. FireRed pasó de 6 a 9 hitos: guardián del fósil, recogida del fósil de Mt. Moon y rival de Ciudad Celeste; Emerald pasó de 15 a 16 hitos después de interceptar a Briney, viajar a Dewford y entregar la carta a Steven. Ambas partidas conservaban una medalla y cero entradas al Salón de la Fama. Son continuaciones de partidas exploratorias, con derrotas y retrocesos previos, sin reiniciar ni editar los Pokémon para la prueba.
+
+Evidencia local: `artifacts/verified_story/native/firered/recovery_result.json`, `artifacts/briney_diagnosis/patrol-report.json`, `artifacts/briney_diagnosis/steven-report.json` y `artifacts/verified_recovery_import.json`. Los checkpoints originales se conservaron y las copias verificadas se importaron con procedencia registrada. Los contadores posteriores cambian mientras los workers juegan: consulta el dashboard para el estado actual.
 
 El solver marca como demostradas solo decisiones con prueba válida en el contexto modelado. Con incertidumbre o `unknown`, no afirma seguridad; toma la acción de menor riesgo estimado y registra “sin prueba”. Desmayos y derrotas también son parte de la telemetría.
 

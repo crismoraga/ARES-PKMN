@@ -38,17 +38,36 @@ def _text(surface: pygame.Surface, font: pygame.font.Font, value: str,
     surface.blit(font.render(_fit_text(font, value, width), True, color), (x, y))
 
 
-def _party_caption(status: Mapping[str, object]) -> str:
+def _party(status: Mapping[str, object]) -> list[Mapping[str, object]]:
     value = status.get("party")
     if not isinstance(value, list):
-        return "Equipo: esperando la lectura de la partida"
-    captions: list[str] = []
-    for mon in value[:6]:
-        if isinstance(mon, Mapping):
-            values = cast(Mapping[str, object], mon)
-            captions.append(f"#{status_number(values, 'species')} N{status_number(values, 'level')} "
-                            f"{status_number(values, 'hp')}/{status_number(values, 'maxHP')} PS")
-    return "Equipo: " + "  ·  ".join(captions)
+        value = nested_mapping(status, "telemetry").get("party")
+    if not isinstance(value, list):
+        return []
+    return [cast(Mapping[str, object], mon) for mon in value[:6] if isinstance(mon, Mapping)]
+
+
+def _draw_team(surface: pygame.Surface, font: pygame.font.Font, party: list[Mapping[str, object]],
+               x: int, y: int, width: int) -> int:
+    """Two columns of name, level and an HP bar; returns the height used."""
+    if not party:
+        _text(surface, font, "Equipo: esperando la lectura de la partida", x, y, width)
+        return 22
+    column = (width - 12) // 2
+    for index, mon in enumerate(party):
+        cx, cy = x + (index % 2) * (column + 12), y + (index // 2) * 22
+        name = str(mon.get("name") or f"#{status_number(mon, 'species')}")
+        hp, maximum = status_number(mon, "hp"), max(1, status_number(mon, "maxHP"))
+        label = _fit_text(font, f"{name} N{status_number(mon, 'level')}", column // 2)
+        _text(surface, font, label, cx, cy, column // 2)
+        bar = pygame.Rect(cx + column // 2 + 4, cy + 5, column // 2 - 70, 8)
+        ratio = hp / maximum
+        pygame.draw.rect(surface, (40, 52, 70), bar, border_radius=4)
+        fill = bar.copy()
+        fill.width = max(0, int(bar.width * ratio))
+        pygame.draw.rect(surface, GREEN if ratio > 0.5 else (GOLD if ratio > 0.2 else RED), fill, border_radius=4)
+        _text(surface, font, f"{hp}/{maximum}", bar.right + 6, cy, 64, MUTED)
+    return ((len(party) + 1) // 2) * 22
 
 
 def _draw_panel(surface: pygame.Surface, rect: pygame.Rect, snapshot: LiveCampaignSnapshot,
@@ -81,10 +100,13 @@ def _draw_panel(surface: pygame.Surface, rect: pygame.Rect, snapshot: LiveCampai
         state = "Campaña completada y verificada"
     if error:
         state = "Error: " + error
+    liveness = str(status.get("liveness", ""))
+    if liveness in ("dead", "unresponsive"):
+        state = str(status.get("liveness_message", "Proceso detenido"))
     if snapshot.rgb is not None and snapshot.age_seconds > 3 and running:
         state = f"Última imagen hace {snapshot.age_seconds:.1f} s"
     _text(surface, body_font, f"{state} · {status_number(status, 'frames'):,} fotogramas", x, y, width,
-          RED if error else (GREEN if running else GOLD))
+          RED if error or liveness in ("dead", "unresponsive") else (GREEN if running else GOLD))
     _text(surface, body_font, f"Victorias {status_number(metrics, 'wins')}  Derrotas {status_number(metrics, 'losses')}  "
           f"Debilitados {status_number(metrics, 'faints')}  Capturas {status_number(metrics, 'captures')}",
           x, y + 27, width)
@@ -93,13 +115,19 @@ def _draw_panel(surface: pygame.Surface, rect: pygame.Rect, snapshot: LiveCampai
     _text(surface, small_font, f"Mapa {position.get('map_group', '?')}:{position.get('map_num', '?')}  "
           f"Posición ({position.get('x', '?')}, {position.get('y', '?')}, {position.get('z', '?')})  "
           f"Menú: {status.get('menu', '—')}", x, y + 80, width, MUTED)
-    _text(surface, small_font, _party_caption(status), x, y + 104, width)
+    team_height = _draw_team(surface, small_font, _party(status), x, y + 104, width)
+    watchdog = nested_mapping(status, "progress_watchdog")
+    health_y = y + 108 + team_height
+    _text(surface, small_font, f"Escena {status.get('scene', '—')}  Atasco: intento {status_number(watchdog, 'attempts')}"
+          f"  retrocesos {status_number(watchdog, 'rewinds')}  fallos {status_number(metrics, 'faults')}"
+          f"  recuperaciones {status_number(metrics, 'recoveries')}", x, health_y, width,
+          GOLD if status_number(watchdog, "attempts") else MUTED)
     _text(surface, small_font, f"Decisiones con prueba {status_number(metrics, 'proved_decisions')}  "
           f"Sin prueba {status_number(metrics, 'unproven_decisions')}  Guardados {status_number(metrics, 'checkpoints')}",
-          x, y + 128, width, MUTED)
-    _text(surface, small_font, "Actividad reciente", x, y + 159, width, MUTED)
+          x, health_y + 24, width, MUTED)
+    _text(surface, small_font, "Actividad reciente", x, health_y + 55, width, MUTED)
     for index, event in enumerate(reader.events[-5:]):
-        line_y = y + 184 + index * 22
+        line_y = health_y + 80 + index * 22
         if line_y + 20 < rect.bottom - 10:
             _text(surface, small_font, event_caption(event), x, line_y, width, MUTED)
 
@@ -118,7 +146,7 @@ def main() -> None:
     try:
         info = pygame.display.Info()
         desired_width = 2 * 240 * int(args.scale) + 110
-        desired_height = 160 * int(args.scale) + 450
+        desired_height = 160 * int(args.scale) + 520
         width = min(desired_width, max(960, info.current_w - 60))
         height = min(desired_height, max(720, info.current_h - 80))
         surface = pygame.display.set_mode((width, height), pygame.RESIZABLE)
@@ -143,8 +171,8 @@ def main() -> None:
                     active = False
             surface.fill(BACKGROUND)
             screen_width, screen_height = surface.get_size()
-            _text(surface, small_font, "ARES · progreso en tiempo real. Cerrar esta ventana solo cierra el visor.",
-                  18, 10, screen_width - 36, MUTED)
+            _text(surface, small_font, "ARES · progreso en tiempo real. Cerrar esta ventana solo cierra el visor. "
+                  "Estación completa: .\\ARES.ps1 dashboard", 18, 10, screen_width - 36, MUTED)
             panel_width = (screen_width - 54) // 2
             for index, reader in enumerate(readers):
                 snapshot = reader.poll()

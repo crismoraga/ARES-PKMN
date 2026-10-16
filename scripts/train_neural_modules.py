@@ -21,6 +21,7 @@ from core.devices import ModelProbe, choose_training_device
 from core.game_data import ROOT, RomCatalog
 from core.planner.gflownet_team import TeamCandidate, TeamSynthesisGFlowNet
 from core.training_data import collect_world_transitions
+from core.training_monitor import TrainingMonitor, write_training_summary
 from core.world_model.hjepa import LatentHJEPAWorldModel
 
 
@@ -54,16 +55,43 @@ def _tb_batch(model: TeamSynthesisGFlowNet, catalog: tuple[TeamCandidate, ...],
                                                 torch.tensor(rewards, device=model.log_Z.device))
 
 
-def train(steps: int = 128, seed: int = 42, requested_device: str = "auto") -> dict[str, object]:
+def train(steps: int = 128, seed: int = 42, requested_device: str = "auto",
+          resume: bool = False, max_cycles: int = 32, target_win_rate: float = 0.85) -> dict[str, object]:
+    """Train with run-scoped live metrics and truthful completion/failure state."""
+    monitor = TrainingMonitor(ROOT / "artifacts/training",
+                              total_updates=max(1, steps + 8 * max(0, max_cycles) + 8),
+                              backend="pending")
+    try:
+        result = _train(steps, seed, requested_device, resume, max_cycles, target_win_rate, monitor)
+    except BaseException as error:
+        monitor.fail(error)
+        raise
+    monitor.finish()
+    return result
+
+
+def _train(steps: int, seed: int, requested_device: str, resume: bool,
+           max_cycles: int, target_win_rate: float, monitor: TrainingMonitor) -> dict[str, object]:
     """Measure before/after losses, real RL outcomes, and persist reusable weights."""
     if steps < 8:
         raise ValueError("At least8 updates required")
     torch.set_num_threads(8)
     torch.manual_seed(seed)
+    monitor.publish(stage="collecting_data")
     states, actions, successors = collect_world_transitions(1024, seed)
     world = LatentHJEPAWorldModel()
     flow = TeamSynthesisGFlowNet(411)
     policy = AresBattlePolicyNetwork()
+    checkpoint_file = ROOT / "artifacts" / "checkpoints" / "neural.pt"
+    if resume and checkpoint_file.is_file():
+        saved = torch.load(checkpoint_file, map_location="cpu", weights_only=False)
+        if "world_model" in saved:
+            world.load_state_dict(saved["world_model"])
+        if "gflownet" in saved:
+            flow.load_state_dict(saved["gflownet"])
+        if "battle_policy" in saved:
+            policy.load_state_dict(saved["battle_policy"])
+        print(f"Resumed existing neural weights from {checkpoint_file}", flush=True)
     catalog, allowed = _catalog()
     probe_entities = torch.randn(4, 7, 48)
     probe_roles = torch.tensor([[0, 1, 2, 3, 4, 4, 6]] * 4)
@@ -94,7 +122,9 @@ def train(steps: int = 128, seed: int = 42, requested_device: str = "auto") -> d
         return logits.square().mean() + targets.square().mean() + value.square().mean()
 
     probes: list[tuple[nn.Module, ModelProbe]] = [(world, world_probe), (flow, flow_probe), (policy, policy_probe)]
+    monitor.publish(stage="selecting_device")
     selection = choose_training_device(probes, requested_device)
+    monitor.publish(stage="world_and_team", backend=selection.backend)
     print(f"Backend: {selection.backend}; {selection.reason}", flush=True)
     world.to(selection.device)
     flow.to(selection.device)
@@ -105,9 +135,17 @@ def train(steps: int = 128, seed: int = 42, requested_device: str = "auto") -> d
         initial_world = float(world.forward_loss(valid_states, valid_actions, valid_next)[0].cpu())
         torch.manual_seed(seed + 1)
         initial_flow = float(_tb_batch(flow, catalog, allowed, 16).cpu())
-    world_optimizer = Adam(world.parameters(), lr=2e-3)
-    flow_optimizer = Adam([{"params": [p for name, p in flow.named_parameters() if name != "log_Z"], "lr": 2e-3},
-                          {"params": [flow.log_Z], "lr": 0.4}])
+    monitor.publish(stage="world_and_team", vicreg=initial_world, trajectory_balance=initial_flow)
+    best_world_weights = copy.deepcopy(world.state_dict())
+    best_flow_weights = copy.deepcopy(flow.state_dict())
+    best_world_loss = initial_world
+    best_flow_loss = initial_flow
+
+    lr_world = 1e-4 if resume else 2e-3
+    lr_flow = 3e-4 if resume else 2e-3
+    world_optimizer = Adam(world.parameters(), lr=lr_world)
+    flow_optimizer = Adam([{"params": [p for name, p in flow.named_parameters() if name != "log_Z"], "lr": lr_flow},
+                          {"params": [flow.log_Z], "lr": 0.05 if resume else 0.4}])
     history: list[dict[str, float]] = []
     for step in range(steps):
         indices = torch.randint(0, 896, (64,)).to(selection.device)
@@ -122,36 +160,60 @@ def train(steps: int = 128, seed: int = 42, requested_device: str = "auto") -> d
         backward(flow_loss)
         torch.nn.utils.clip_grad_norm_(flow.parameters(), 100)
         flow_optimizer.step()
+        if step % 8 == 0 or step == steps - 1:
+            with torch.no_grad():
+                val_world = float(world.forward_loss(valid_states, valid_actions, valid_next)[0].cpu())
+                torch.manual_seed(seed + 1)
+                val_flow = float(_tb_batch(flow, catalog, allowed, 16).cpu())
+            if val_world <= best_world_loss:
+                best_world_loss = val_world
+                best_world_weights = copy.deepcopy(world.state_dict())
+            if val_flow <= best_flow_loss:
+                best_flow_loss = val_flow
+                best_flow_weights = copy.deepcopy(flow.state_dict())
         if step % 16 == 0 or step == steps - 1:
             entry = {"update": float(step), "vicreg": float(world_loss.detach().cpu()), "trajectory_balance": float(flow_loss.detach().cpu())}
             history.append(entry)
             print(json.dumps(entry), flush=True)
-    with torch.no_grad():
-        final_world = float(world.forward_loss(valid_states, valid_actions, valid_next)[0].cpu())
-        torch.manual_seed(seed + 1)
-        final_flow = float(_tb_batch(flow, catalog, allowed, 16).cpu())
+        monitor.publish(stage="world_and_team", update=step + 1,
+                        vicreg=float(world_loss.detach().cpu()),
+                        trajectory_balance=float(flow_loss.detach().cpu()))
+    world.load_state_dict(best_world_weights)
+    flow.load_state_dict(best_flow_weights)
+    final_world = best_world_loss
+    final_flow = best_flow_loss
     # Recurrent PPO uses the validated CPU integer arena, independently of optional
     # DirectML selection for the portable world/team networks.
-    trainer = PSROLeagueTrainer(policy=policy.cpu(), seed=seed)
+    trainer = PSROLeagueTrainer(policy=policy.cpu(), learning_rate=1.5e-4 if resume else 3e-4, seed=seed)
+    monitor.publish(stage="ppo_evaluation", backend="cpu", update=steps)
     initial_policy = trainer.evaluate(episodes=64)
+    monitor.publish(stage="ppo", win_rate=initial_policy["win_rate"])
     initial_snapshot = copy.deepcopy(trainer.policy).eval()
     initial_snapshot.requires_grad_(False)
     best_weights = copy.deepcopy(trainer.policy.state_dict())
     best_optimizer = copy.deepcopy(trainer.optimizer.state_dict())
     final_policy = initial_policy
     reinforcement_history: list[dict[str, float]] = []
+    cycles_completed = 0
     # Establish a competent baseline before training against a weaker frozen
     # self-policy. Validation selects measured checkpoints; no label imitation.
-    for cycle in range(32):
+    for cycle in range(max_cycles):
+        monitor.publish(stage="ppo", ppo_cycle=cycle + 1, update=steps + 8 * cycle)
         reinforcement_history.extend(trainer.train_best_response(updates=8, rollout_steps=32, num_envs=2))
+        monitor.publish(stage="ppo_evaluation", ppo_cycle=cycle + 1,
+                        value_loss=reinforcement_history[-1]["value_loss"])
         measured = trainer.evaluate(episodes=64)
+        cycles_completed = cycle + 1
+        monitor.publish(stage="ppo", update=steps + 8 * cycles_completed,
+                        ppo_cycle=cycles_completed, win_rate=measured["win_rate"],
+                        value_loss=reinforcement_history[-1]["value_loss"])
         print(json.dumps({"ppo_cycle": cycle, "win_rate": measured["win_rate"],
                           "value_loss": reinforcement_history[-1]["value_loss"]}), flush=True)
         if measured["win_rate"] > final_policy["win_rate"]:
             final_policy = measured
             best_weights = copy.deepcopy(trainer.policy.state_dict())
             best_optimizer = copy.deepcopy(trainer.optimizer.state_dict())
-        if cycle >= 1 and final_policy["win_rate"] >= min(1.0, initial_policy["win_rate"] + 0.05):
+        if cycle >= 4 and final_policy["win_rate"] >= target_win_rate:
             break
     trainer.policy.load_state_dict(best_weights)
     trainer.optimizer.load_state_dict(best_optimizer)
@@ -159,10 +221,13 @@ def train(steps: int = 128, seed: int = 42, requested_device: str = "auto") -> d
     trainer.payoff_matrix = torch.zeros(1, 1)
     trainer.nash_distribution = torch.ones(1)
     trainer.freeze_current_policy()
+    monitor.publish(stage="psro", update=steps + 8 * cycles_completed)
     payoff_matrix = trainer.evaluate_league(episodes_per_match=16)
     league_history = trainer.train_best_response(updates=8, rollout_steps=32, num_envs=2)
     reinforcement_history.extend(league_history)
     league_validation = trainer.evaluate(episodes=64)
+    monitor.publish(stage="psro", update=steps + 8 * cycles_completed + 8,
+                    win_rate=league_validation["win_rate"], value_loss=league_history[-1]["value_loss"])
     if league_validation["win_rate"] >= final_policy["win_rate"]:
         final_policy = league_validation
         best_weights = copy.deepcopy(trainer.policy.state_dict())
@@ -171,6 +236,7 @@ def train(steps: int = 128, seed: int = 42, requested_device: str = "auto") -> d
         trainer.policy.load_state_dict(best_weights)
         trainer.optimizer.load_state_dict(best_optimizer)
     result: dict[str, object] = {
+        "run_id": monitor.run_id,
         "backend": selection.backend, "backend_reason": selection.reason,
         "cpu_probe_seconds": selection.cpu_seconds, "directml_probe_seconds": selection.directml_seconds,
         "vicreg": {"initial": initial_world, "final": final_world},
@@ -181,6 +247,8 @@ def train(steps: int = 128, seed: int = 42, requested_device: str = "auto") -> d
     }
     directory = ROOT / "artifacts" / "checkpoints"
     directory.mkdir(parents=True, exist_ok=True)
+    monitor.publish(stage="saving", vicreg=final_world, trajectory_balance=final_flow,
+                    win_rate=final_policy["win_rate"])
     checkpoint = {"world_model": world.cpu().state_dict(), "gflownet": flow.cpu().state_dict(),
         "battle_policy": trainer.policy.state_dict(), "world_optimizer": world_optimizer.state_dict(),
         "flow_optimizer": flow_optimizer.state_dict(), "ppo_optimizer": trainer.optimizer.state_dict(),
@@ -189,9 +257,11 @@ def train(steps: int = 128, seed: int = 42, requested_device: str = "auto") -> d
     temporary = directory / "neural.pt.tmp"
     torch.save(checkpoint, temporary)
     temporary.replace(directory / "neural.pt")
-    (directory / "training_metrics.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    if not math.isfinite(final_world) or not math.isfinite(final_flow) or final_world >= initial_world or final_flow >= initial_flow:
-        raise RuntimeError(f"Neural loss gate failed: VICReg{initial_world}->{final_world}; TB{initial_flow}->{final_flow}")
+    write_training_summary(directory / "training_metrics.json", result)
+    world_failed = (final_world > initial_world) if resume else (final_world >= initial_world)
+    flow_failed = (final_flow > initial_flow) if resume else (final_flow >= initial_flow)
+    if not math.isfinite(final_world) or not math.isfinite(final_flow) or world_failed or flow_failed:
+        raise RuntimeError(f"Neural loss gate failed: VICReg {initial_world}->{final_world}; TB {initial_flow}->{final_flow}")
     if final_policy["win_rate"] < initial_policy["win_rate"]:
         raise RuntimeError(f"RL evaluation regressed:{initial_policy}->{final_policy}")
     print(json.dumps({"vicreg": result["vicreg"], "trajectory_balance": result["trajectory_balance"],
@@ -206,8 +276,11 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", choices=("auto", "cpu", "directml"), default="auto")
+    parser.add_argument("--resume", action="store_true", help="Resume from existing neural checkpoint")
+    parser.add_argument("--cycles", type=int, default=32, help="Maximum PPO training cycles")
+    parser.add_argument("--target-win-rate", type=float, default=0.85, help="Target win rate for early stopping")
     args = parser.parse_args()
-    train(args.steps, args.seed, args.device)
+    train(args.steps, args.seed, args.device, resume=args.resume, max_cycles=args.cycles, target_win_rate=args.target_win_rate)
 
 
 if __name__ == "__main__":

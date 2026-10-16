@@ -340,6 +340,9 @@ def test_native_bag_pocket_scroll_item_use_and_forced_replacement(emerald: bool)
     bridge.write_memory(binding["menu"] + 2, b"\x00")
     assert controller.tick() == bridge.KEY_A
     _consume_release(bridge, controller)
+    assert controller.pending is not None  # a submitted A edge is not confirmed consumption
+    bridge.write_memory(pointer + 6, struct.pack("<H", 7 ^ key))
+    assert controller.tick() == 0
     assert not controller.busy
     # A forced replacement starts directly in the native party task, bypassing Fight.
     party = bridge.get_decrypted_player_party()
@@ -360,6 +363,10 @@ def test_native_bag_pocket_scroll_item_use_and_forced_replacement(emerald: bool)
     bridge.write_memory(binding["menu"] + 2, b"\x00")
     assert controller.tick() == bridge.KEY_A
     _consume_release(bridge, controller)
+    assert controller.pending is not None  # wait until the native battle screen returns
+    bridge.write_memory(bridge.memory_map.tasks, bytes(16 * 40))
+    bridge.write_memory(binding["callbacks"], struct.pack("<I", binding["action"] | 1))
+    assert controller.tick() == 0
     assert not controller.busy
     with pytest.raises(ValueError, match="healthy"):
         controller.request_switch(0)

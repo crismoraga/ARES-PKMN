@@ -11,6 +11,7 @@ import torch
 from core.bridge.synthetic_gba_silicon import SyntheticGBASiliconBridge
 from core.field_controls import FieldMenuController
 from core.game_data import Game, ROOT, ROM_NAMES, RomCatalog
+from core.observations import player_party_in_battle_order
 from scripts.run_autonomous_verification_demo import build_laboratory, run_demo
 
 
@@ -68,6 +69,39 @@ def test_synthetic_never_certifies_native_clearance() -> None:
         evidence = controller.native_completion_evidence()
         assert evidence["complete"] is False
         assert controller.status()["native_campaign_certified"] is False
+    finally:
+        controller.close()
+
+
+def test_training_intent_cache_survives_tile_motion_but_invalidates_on_roster_change(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Training cannot run a whole-world route search on each tile/VBlank."""
+    controller = build_laboratory(map_count=4)
+    bridge = cast(SyntheticGBASiliconBridge, controller.bridge)
+    calls = 0
+
+    def training(*args: object) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return {"mode": "OPTIMAL_TRAINING_CURRICULUM", "dest": (0, 0, (5, 2))}
+
+    monkeypatch.setattr(controller.planner, "get_active_directive", training)
+    try:
+        frame = bridge.frame_count
+        controller._execute_overworld_cycle()
+        assert calls == 1
+        controller.movement.clear()
+        bridge.transition_map(0, 0, 2, 2, relocate=False)
+        controller._execute_overworld_cycle()
+        assert calls == 1
+        assert controller.movement.pending
+        controller.movement.clear()
+        party = bridge.get_decrypted_player_party()
+        party[0]["level"] += 1
+        bridge.configure_party(party)
+        controller._execute_overworld_cycle()
+        assert calls == 2
+        assert bridge.frame_count == frame  # Every planner still owns zero frames.
     finally:
         controller.close()
 
@@ -134,6 +168,26 @@ def _set_native_task(field: FieldMenuController, task: str) -> None:
     bridge = field.bridge
     bridge.write_memory(bridge.memory_map.tasks, bytes(16 * 40))
     bridge.write_memory(bridge.memory_map.tasks, struct.pack("<I", field.symbols[task].address | 1) + b"\x01")
+
+
+@pytest.mark.native
+@pytest.mark.parametrize("game", ["firered", "emerald"])
+def test_party_observations_restore_stable_battle_indexes_only_during_party_ui(
+        game: Game, monkeypatch: pytest.MonkeyPatch) -> None:
+    bridge, field = _field_fixture(game)
+    try:
+        first = bridge.get_decrypted_player_party()[0]
+        second = dict(first, pid=1234, species=283)
+        bridge.configure_party([first, second])
+        monkeypatch.setattr(bridge, "is_in_battle", lambda: (True, False))
+        _set_native_task(field, "Task_HandleChooseMonInput")
+        bridge.write_memory(field.symbols["gBattlePartyCurrentOrder"].address, b"\x10\x23\x45")
+        normalized = player_party_in_battle_order(bridge)
+        assert [mon["pid"] for mon in normalized] == [second["pid"], first["pid"]]
+        bridge.write_memory(bridge.memory_map.tasks, bytes(16 * 40))
+        assert [mon["pid"] for mon in player_party_in_battle_order(bridge)] == [first["pid"], second["pid"]]
+    finally:
+        bridge.close()
 
 
 @pytest.mark.native

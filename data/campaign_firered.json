@@ -934,6 +934,38 @@
       "menu_choice": 0
     },
     {
+      "milestone_id": "LAPRAS_GIFT",
+      "description": "LAPRAS GIFT",
+      "completion_flag_id": 582,
+      "target_map_group": 1,
+      "target_map_num": 53,
+      "target_coords": [
+        0,
+        7
+      ],
+      "required_avg_level": 0,
+      "required_types": [],
+      "dependencies": [
+        "SILPH_CO"
+      ],
+      "action": "interact",
+      "script": "SilphCo_7F_EventScript_LaprasGuy",
+      "npc_local_id": 2,
+      "completion_conditions": [
+        {
+          "kind": "party_species",
+          "identifier": 131,
+          "value": 1
+        }
+      ],
+      "required_items": [],
+      "required_moves": [],
+      "map_name": "SilphCo_7F",
+      "flag_name": "FLAG_GOT_LAPRAS_FROM_SILPH",
+      "puzzle": "",
+      "menu_choice": 0
+    },
+    {
       "milestone_id": "GYM_6_SABRINA",
       "description": "GYM 6 SABRINA",
       "completion_flag_id": 2085,
@@ -950,7 +982,7 @@
         17
       ],
       "dependencies": [
-        "SILPH_CO"
+        "LAPRAS_GIFT"
       ],
       "action": "interact",
       "script": "SaffronCity_Gym_EventScript_Sabrina",

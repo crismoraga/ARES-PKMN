@@ -4,12 +4,15 @@ from __future__ import annotations
 import heapq
 import json
 import math
+from collections import deque
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
 from core.bridge.ffi_mgba import GBABridgeProtocol
+from core.navigation.obstacles import FlagReader, FlagSnapshot, ObstacleModel, obstacle_model, template_objects
+from core.navigation.script_gates import gate_state, gates_by_map, load_elevators, map_overlay
 from core.navigation.source_data import MapKey, SourceMapCatalog, load_map_catalog
 from core.navigation.constrained_astar import GbaConstrainedAStar, Matrix
 
@@ -36,6 +39,11 @@ class WarpTransition:
     activation: Literal["step", "interact", "directional"] = "step"
     behavior: int = 0
     required_flags: tuple[int, ...] = ()
+    # Elevator exits are dynamic warps: the floor panel (sign or attendant)
+    # must first set the destination with menu row ``menu_choice``.
+    panel_xy: XY | None = None
+    panel_script: str = ""
+    panel_local_id: int = 0
 
 
 class HierarchicalWarpGraph:
@@ -45,6 +53,17 @@ class HierarchicalWarpGraph:
         self.adjacency: dict[MapKey, list[WarpTransition]] = {}
         self.blocked_transitions: set[tuple[int, int, int, int, int, int]] = set()
         self.catalog: SourceMapCatalog | None = None
+        # Pushback gates: source-derived ones (``static_gates``) and directed
+        # steps observed to be undone by a script at runtime (learned).
+        self.static_gates = True
+        # What-if searches treat flagged story actors as passable to find which
+        # event would clear them (``story_actors=False``); never for walking.
+        self.story_actors = True
+        self.learned_gate_edges: dict[MapKey, frozenset[tuple[XY, XY]]] = {}
+        self._source_walk_cache: dict[tuple[object, ...], dict[XY, float]] = {}
+        self._obstacle_cache: dict[tuple[object, ...], ObstacleModel] = {}
+        self._live_walk_cache: dict[tuple[object, ...], dict[XY, float]] = {}
+        self._coarse_reachability_cache: tuple[tuple[MapKey, frozenset[str]], frozenset[MapKey]] | None = None
         for transition in transitions:
             self.add_transition(transition)
 
@@ -52,6 +71,10 @@ class HierarchicalWarpGraph:
         if not math.isfinite(transition.cost) or transition.cost < 0:
             raise ValueError("Dijkstra requires finite nonnegative edge costs")
         self.adjacency.setdefault(transition.source, []).append(transition)
+        self._coarse_reachability_cache = None
+        self._live_walk_cache.clear()
+        self._source_walk_cache.clear()
+        self._obstacle_cache.clear()
 
     def add_warp(self, source: MapKey, destination: MapKey, source_xy: XY,
                  destination_xy: XY, cost: float = 1.0) -> None:
@@ -150,12 +173,59 @@ class HierarchicalWarpGraph:
                 graph.add_transition(WarpTransition(truck, littleroot, (int(warp["x"]), int(warp["y"])),
                                                     (5, 8), kind="warp", direction="right"))
             graph._add_boat(catalog, "Route104_MrBrineysHouse", "DewfordTown", "Briney")
+            # DewfordTown_EventScript_SailToSlateport leaves the player on the
+            # boat at (21,26), then DewfordTown_Movement_ExitBoatSlateport walks
+            # up three tiles to the beach. Briney's tile + 1 is open ocean.
             graph._add_boat(catalog, "DewfordTown", "Route109", "Briney", choice=1, default=2,
-                            requirements=("DEVON_GOODS", "STEVEN_LETTER"))
+                            requirements=("DEVON_GOODS", "STEVEN_LETTER"), arrival_xy=(21, 23))
             graph._add_boat(catalog, "Route109", "DewfordTown", "Briney")
-            graph._add_boat(catalog, "DewfordTown", "Route104", "Briney", default=2)
+            # DewfordTown_EventScript_SailToPetalburg ends with the explicit
+            # warp MAP_ROUTE104_MR_BRINEYS_HOUSE, 5, 4. The boat animation first
+            # crosses Route104, but the field-ready landing is inside the house.
+            graph._add_boat(catalog, "DewfordTown", "Route104_MrBrineysHouse", "Briney",
+                            default=2, arrival_xy=(5, 4))
             graph._add_petalburg_script_doors(catalog)
+        graph._add_elevators(catalog, game, warp_behaviors)
         return graph
+
+    def _add_elevators(self, catalog: SourceMapCatalog, game: str, warp_behaviors: frozenset[int]) -> None:
+        """Dynamic-warp exits, one edge per floor its panel's menu can select."""
+        for map_name, panels in load_elevators(game).items():
+            key = catalog.by_name.get(map_name)
+            if key is None:
+                continue
+            raw = catalog.maps[key]
+            behaviors = catalog.behavior_grid(key)
+            exits = [(index, (int(warp["x"]), int(warp["y"]))) for index, warp in enumerate(raw["warp_events"])
+                     if str(warp["dest_map"]) == "MAP_DYNAMIC" and 0 <= int(warp["y"]) < behaviors.shape[0] and
+                     0 <= int(warp["x"]) < behaviors.shape[1] and
+                     int(behaviors[int(warp["y"]), int(warp["x"])]) in warp_behaviors]
+            for panel in panels[:1]:  # duplicate panels run the same script
+                flags = tuple(catalog.constants[name] for name in panel.get("required_flags", [])
+                              if name in catalog.constants)
+                for floor in panel["floors"]:
+                    destination = catalog.by_id.get(str(floor["map"]))
+                    if destination is None or destination == key:
+                        continue
+                    for index, xy in exits:
+                        behavior = int(behaviors[xy[1], xy[0]])
+                        activation, direction = self._warp_activation(catalog, behavior)
+                        self.add_transition(WarpTransition(
+                            key, destination, xy, (int(floor["xy"][0]), int(floor["xy"][1])), cost=4.0,
+                            source_warp_id=index, direction=direction, activation=activation, behavior=behavior,
+                            menu_choice=int(floor["choice"]), required_flags=flags,
+                            panel_xy=(int(panel["xy"][0]), int(panel["xy"][1])), panel_script=str(panel["script"]),
+                            panel_local_id=int(panel.get("npc_local_id", 0))))
+
+    @staticmethod
+    def _warp_activation(catalog: SourceMapCatalog,
+                         behavior: int) -> tuple[Literal["step", "interact", "directional"], str]:
+        arrows = {"MB_EAST_ARROW_WARP": "right", "MB_WEST_ARROW_WARP": "left",
+                  "MB_NORTH_ARROW_WARP": "up", "MB_SOUTH_ARROW_WARP": "down"}
+        for name, arrow_direction in arrows.items():
+            if behavior == catalog.constants.get(name, -1):
+                return "directional", arrow_direction
+        return "step", ""
 
     def _add_petalburg_script_doors(self, catalog: SourceMapCatalog) -> None:
         """Petalburg doors are BG scripts on normal tiles, not JSON warp tiles."""
@@ -198,10 +268,12 @@ class HierarchicalWarpGraph:
         return frozenset(constants[name] for name in names if name in constants)
 
     def _add_boat(self, catalog: SourceMapCatalog, source: str, dest: str, script: str,
-                  choice: int = 0, default: int = 1, requirements: tuple[str, ...] = ("DEVON_GOODS",)) -> None:
+                  choice: int = 0, default: int = 1, requirements: tuple[str, ...] = ("DEVON_GOODS",),
+                  arrival_xy: XY | None = None) -> None:
         target = catalog.find_target(source, script + "$" )
         arrival_targets = [candidate for candidate in catalog.targets(dest) if str(candidate["script"]).endswith("Briney")]
-        arrival = (int(arrival_targets[0]["x"]), int(arrival_targets[0]["y"]) + 1) if arrival_targets else (13, 51)
+        arrival = arrival_xy if arrival_xy is not None else (
+            (int(arrival_targets[0]["x"]), int(arrival_targets[0]["y"]) + 1) if arrival_targets else (13, 51))
         self.add_transition(WarpTransition(catalog.by_name[source], catalog.by_name[dest],
                                            (int(target["x"]), int(target["y"])), arrival, kind="script",
                                            cost=20, required_milestones=requirements, script=str(target["script"]),
@@ -280,18 +352,206 @@ class HierarchicalWarpGraph:
         return (*edge.source, *edge.destination, *edge.source_xy)
 
     def block_transition(self, edge: WarpTransition) -> None:
-        self.blocked_transitions.add(self._edge_id(edge))
+        self.block_transition_id(self._edge_id(edge))
+
+    def block_transition_id(self, edge_id: tuple[int, int, int, int, int, int]) -> None:
+        self.blocked_transitions.add(edge_id)
+        self._coarse_reachability_cache = None
+
+    def unblock_transition(self, edge_id: tuple[int, int, int, int, int, int]) -> None:
+        """Lift a temporary tabu; source-defined edges are never deleted."""
+        self.blocked_transitions.discard(edge_id)
+        self._coarse_reachability_cache = None
+
+    def _coarsely_reachable(self, start: MapKey, completed: frozenset[str]) -> frozenset[MapKey]:
+        """Cheap topology superset before any expensive tile-component search."""
+        signature = start, completed
+        if self._coarse_reachability_cache is not None and self._coarse_reachability_cache[0] == signature:
+            return self._coarse_reachability_cache[1]
+        reached = {start}
+        queue = deque([start])
+        while queue:
+            for edge in self.transitions_from(queue.popleft(), completed):
+                if edge.destination not in reached:
+                    reached.add(edge.destination)
+                    queue.append(edge.destination)
+        result = frozenset(reached)
+        self._coarse_reachability_cache = signature, result
+        return result
+
+    @staticmethod
+    def _approach_tiles(edge: WarpTransition) -> tuple[XY, ...]:
+        x, y = edge.source_xy
+        if edge.activation in ("interact", "directional") and edge.direction == "up":
+            return ((x, y + 1),)
+        if edge.kind == "script" and edge.npc_local_id:
+            return ((x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y))
+        return (edge.source_xy,)
+
+    def set_learned_gate_edges(self, edges: dict[MapKey, frozenset[tuple[XY, XY]]]) -> None:
+        """Replace runtime-learned pushback steps; cached walks depend on them."""
+        normalized = {key: frozenset(value) for key, value in edges.items() if value}
+        if normalized == self.learned_gate_edges:
+            return
+        self.learned_gate_edges = normalized
+        self._source_walk_cache.clear()
+        self._obstacle_cache.clear()
+        self._live_walk_cache.clear()
+
+    def set_static_gates(self, enabled: bool) -> None:
+        """Cache keys include the gate mode, so toggling never invalidates them."""
+        self.static_gates = enabled
+
+    def set_story_actors(self, enabled: bool) -> None:
+        self.story_actors = enabled
+
+    def _source_obstacles(self, key: MapKey, flags: FlagReader | None,
+                          hm_usable: frozenset[str]) -> ObstacleModel:
+        assert self.catalog is not None
+        game = self.catalog.game
+        dependency: tuple[object, ...] = ()
+        if isinstance(flags, FlagSnapshot):
+            # Only the flags of this map's templates and its gates' verdicts
+            # matter. Keying on whole RAM arrays would discard every cached
+            # walk whenever an unrelated counter variable ticked.
+            dependency = (tuple(flags.get_event_flag(template.flag) for template in template_objects(game, key)
+                                if template.flag is not None and not template.temporary),
+                          tuple(gate_state(gate, flags) for gate in gates_by_map(game).get(key, ()))
+                          if self.static_gates else ())
+        learned = self.learned_gate_edges.get(key, frozenset())
+        cache_key: tuple[object, ...] = (key, hm_usable, dependency, learned, self.static_gates, self.story_actors)
+        cached = self._obstacle_cache.get(cache_key)
+        if cached is None:
+            cached = obstacle_model(self.catalog.game, key, bridge=flags, hm_usable=hm_usable,
+                                    learned_edges=learned, static_gates=self.static_gates,
+                                    story_actors=self.story_actors)
+            if len(self._obstacle_cache) >= 2048:
+                self._obstacle_cache.clear()
+            self._obstacle_cache[cache_key] = cached
+        return cached
+
+    def _walking_costs(self, key: MapKey, position: XY, allow_surf: bool,
+                       bridge: GBABridgeProtocol | None = None, *,
+                       flags: FlagReader | None = None,
+                       hm_usable: frozenset[str] = frozenset()) -> dict[XY, float] | None:
+        """Reachable tile costs; ``bridge`` selects live RAM matrices and actors.
+
+        Source planning still includes object templates (trees, rocks, story
+        NPCs), with persistent flags read through ``flags`` when available, so
+        a later map can never look more open than it does on arrival.
+        """
+        if self.catalog is None or position == (-1, -1):
+            return None
+        game = self.catalog.game
+        if bridge is not None:
+            coords = bridge.get_player_coords_and_map()
+            if (coords["map_group"], coords["map_num"]) != key:
+                # Live RAM describes only the map the avatar stands on.
+                flags = flags if flags is not None else FlagSnapshot(bridge)
+                bridge = None
+        if bridge is None:
+            packed = self.catalog.grid(key)
+            collision, elevation = cast(Matrix, (packed >> 10) & 3), cast(Matrix, packed >> 12)
+            # On-load scripts wall or open tiles depending on story flags; the
+            # live map will show them, so the source plan must agree.
+            overlay = map_overlay(game, str(self.catalog.maps[key]["name"]), flags) if flags is not None else ()
+            if overlay:
+                collision = collision.copy()
+                for x, y, impassable in overlay:
+                    if 0 <= y < collision.shape[0] and 0 <= x < collision.shape[1]:
+                        collision[y, x] = impassable
+            behavior = self.catalog.behavior_grid(key)
+            if not 0 <= position[1] < elevation.shape[0] or not 0 <= position[0] < elevation.shape[1]:
+                return {}
+            actor_z = int(elevation[position[1], position[0]])
+            obstacles = self._source_obstacles(key, flags, hm_usable)
+            cache_key: tuple[object, ...] = (key, position, allow_surf, obstacles, overlay)
+            cached = self._source_walk_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            objects = []
+            player_id = 0
+        else:
+            _, collision, elevation = bridge.extract_live_map_matrices()
+            behavior = bridge.extract_behavior_map()
+            coords = bridge.get_player_coords_and_map()
+            if not 0 <= position[1] < elevation.shape[0] or not 0 <= position[0] < elevation.shape[1]:
+                return {}
+            # A re-entry point is not the avatar's tile; use that tile's elevation.
+            actor_z = coords["z"] if (coords["x"], coords["y"]) == position else int(elevation[position[1], position[0]])
+            if actor_z == 15:
+                actor_z = coords["z"]
+            objects = bridge.get_object_events()
+            player_id = bridge.read_u8(bridge.memory_map.avatar + 5)
+            obstacles = obstacle_model(game, key, bridge=bridge, live_objects=objects,
+                                       player_object_id=player_id, hm_usable=hm_usable, current_map=True,
+                                       learned_edges=self.learned_gate_edges.get(key, frozenset()),
+                                       static_gates=self.static_gates, story_actors=self.story_actors)
+            signature: tuple[object, ...] = (key, position, actor_z, allow_surf,
+                hash(collision.tobytes()), hash(elevation.tobytes()), hash(behavior.tobytes()),
+                tuple(bytes(actor) for actor in objects), player_id, obstacles)
+            cached = self._live_walk_cache.get(signature)
+            if cached is not None:
+                return cached
+        planner = GbaConstrainedAStar(collision, elevation, behavior, game, allow_surf)
+        if bridge is not None and self.story_actors:
+            # Occupancy matters; trainer sight is a cost policy, not a proof that
+            # a map connection is physically inaccessible. A what-if search for
+            # removable story actors ignores live occupancy as well.
+            planner.register_object_events(objects, player_id, penalty=0)
+        planner.add_static_obstacles(obstacles.blocked, obstacles.removable_costs)
+        planner.blocked_edges.update(obstacles.gate_edges)
+        planner.terminal_tiles = {edge.source_xy for edge in self.adjacency.get(key, []) if edge.kind == "warp"}
+        result = planner.reachable_costs((*position, actor_z))
+        if bridge is None:
+            if len(self._source_walk_cache) >= 512:
+                self._source_walk_cache.pop(next(iter(self._source_walk_cache)))
+            self._source_walk_cache[cache_key] = result
+        else:
+            # Several live entries: the avatar tile plus re-entry tiles of this map.
+            if len(self._live_walk_cache) >= 16:
+                self._live_walk_cache.pop(next(iter(self._live_walk_cache)))
+            self._live_walk_cache[signature] = result
+        return result
+
+    def live_walking_costs(self, bridge: GBABridgeProtocol, allow_surf: bool = False,
+                           hm_usable: frozenset[str] = frozenset()) -> dict[XY, float] | None:
+        """Costs from the avatar's live tile, sharing the route search's cache."""
+        coords = bridge.get_player_coords_and_map()
+        return self._walking_costs((coords["map_group"], coords["map_num"]), (coords["x"], coords["y"]),
+                                   allow_surf, bridge, hm_usable=hm_usable)
+
+    def edge_reachable(self, edge: WarpTransition, bridge: GBABridgeProtocol, allow_surf: bool = False,
+                       hm_usable: frozenset[str] = frozenset()) -> bool:
+        """Whether a committed exit is still walkable from the live avatar tile."""
+        walking = self.live_walking_costs(bridge, allow_surf, hm_usable)
+        if walking is None:
+            return True
+        return any(math.isfinite(walking.get(tile, math.inf)) for tile in self._approach_tiles(edge))
 
     def find_route(self, start: MapKey, goal: MapKey,
                    completed: frozenset[str] = frozenset(),
-                   current_xy: XY | None = None) -> list[WarpTransition] | None:
+                   current_xy: XY | None = None,
+                   bridge: GBABridgeProtocol | None = None,
+                   validate_local: bool = True,
+                   hm_usable: frozenset[str] = frozenset()) -> list[WarpTransition] | None:
         if start == goal:
             return []
+        if goal not in self._coarsely_reachable(start, completed):
+            return None
         # Entry coordinates are part of the state. Charging the approach only
         # in the first map makes a one-tile exit followed by 18 maps seem cheaper
         # than walking 39 tiles north, and causes oscillation when replanning.
         # Every map now pays a lower-bound local walking cost, consistently.
         entry = current_xy if current_xy is not None else (-1, -1)
+        surf_badge = "GYM_5_NORMAN" if self.catalog is not None and self.catalog.game == "emerald" else "GYM_5_KOGA"
+        allow_surf = ("HM_SURF" in completed and surf_badge in completed) or "surf" in hm_usable
+        flags: FlagReader | None = None
+        if bridge is not None and self.catalog is not None and validate_local:
+            try:
+                flags = FlagSnapshot(bridge)
+            except (ValueError, RuntimeError):
+                flags = None
         initial = start, entry
         frontier: list[tuple[float, tuple[MapKey, XY]]] = [(0, initial)]
         distances = {initial: 0.0}
@@ -308,11 +568,79 @@ class HierarchicalWarpGraph:
                     route.append(edge)
                     state = parent
                 return route[::-1]
-            for edge in self.adjacency.get(key, []):
-                if (self._edge_id(edge) in self.blocked_transitions or
-                        any(item not in completed for item in edge.required_milestones)):
+            # Route104 and many caves have disconnected regions with one map
+            # ID. Manhattan proximity to a warp does not establish reachability.
+            # Re-entering the current map also uses live RAM: leaving and coming
+            # back must never "forget" a live obstacle (the Route 2 Cut tree loop).
+            walking = self._walking_costs(key, position, allow_surf,
+                bridge if (state == initial or key == start) else None,
+                flags=flags, hm_usable=hm_usable) if validate_local else None
+            for edge in self.transitions_from(key, completed, bridge):
+                if walking is None:
+                    approach = abs(edge.source_xy[0] - position[0]) + abs(edge.source_xy[1] - position[1]) if position != (-1, -1) else 0.0
+                else:
+                    approach = min((walking.get(tile, math.inf) for tile in self._approach_tiles(edge)), default=math.inf)
+                    if not math.isfinite(approach):
+                        continue
+                new = distance + edge.cost + approach
+                neighbor = edge.destination, edge.destination_xy
+                if new < distances.get(neighbor, math.inf):
+                    distances[neighbor], previous[neighbor] = new, (state, edge)
+                    heapq.heappush(frontier, (new, neighbor))
+        return None
+
+    def find_route_to_tile(self, start: MapKey, goal: MapKey, goal_tiles: Iterable[XY],
+                           completed: frozenset[str] = frozenset(), current_xy: XY | None = None,
+                           bridge: GBABridgeProtocol | None = None,
+                           hm_usable: frozenset[str] = frozenset()) -> list[WarpTransition] | None:
+        """Route whose final entry into ``goal`` can actually walk to a goal tile.
+
+        Caves such as Mt. Moon, Rock Tunnel or Granite Cave split one map ID into
+        sections joined only through other floors. Arriving in the right map is
+        not enough: the search continues through other maps until some entry
+        point reaches one of ``goal_tiles``. An empty route means the target is
+        already reachable from the current tile.
+        """
+        targets = set(goal_tiles)
+        if self.catalog is None or not targets or current_xy is None:
+            return None
+        if goal != start and goal not in self._coarsely_reachable(start, completed):
+            return None
+        surf_badge = "GYM_5_NORMAN" if self.catalog.game == "emerald" else "GYM_5_KOGA"
+        allow_surf = ("HM_SURF" in completed and surf_badge in completed) or "surf" in hm_usable
+        flags: FlagReader | None = None
+        if bridge is not None:
+            try:
+                flags = FlagSnapshot(bridge)
+            except (ValueError, RuntimeError):
+                flags = None
+        initial = start, current_xy
+        frontier: list[tuple[float, tuple[MapKey, XY]]] = [(0, initial)]
+        distances = {initial: 0.0}
+        previous: dict[tuple[MapKey, XY], tuple[tuple[MapKey, XY], WarpTransition]] = {}
+        expanded = 0
+        while frontier and expanded < 4096:
+            distance, state = heapq.heappop(frontier)
+            if distance != distances[state]:
+                continue
+            expanded += 1
+            key, position = state
+            walking = self._walking_costs(key, position, allow_surf,
+                                          bridge if (state == initial or key == start) else None,
+                                          flags=flags, hm_usable=hm_usable)
+            if walking is None:
+                return None
+            if key == goal and any(tile in walking for tile in targets):
+                route: list[WarpTransition] = []
+                while state != initial:
+                    parent, edge = previous[state]
+                    route.append(edge)
+                    state = parent
+                return route[::-1]
+            for edge in self.transitions_from(key, completed, bridge):
+                approach = min((walking.get(tile, math.inf) for tile in self._approach_tiles(edge)), default=math.inf)
+                if not math.isfinite(approach):
                     continue
-                approach = abs(edge.source_xy[0] - position[0]) + abs(edge.source_xy[1] - position[1]) if position != (-1, -1) else 0
                 new = distance + edge.cost + approach
                 neighbor = edge.destination, edge.destination_xy
                 if new < distances.get(neighbor, math.inf):
@@ -321,9 +649,26 @@ class HierarchicalWarpGraph:
         return None
 
     def next_transition(self, start: MapKey, goal: MapKey, current_xy: XY | None = None,
-                        completed: frozenset[str] = frozenset()) -> WarpTransition | None:
-        route = self.find_route(start, goal, completed, current_xy)
+                        completed: frozenset[str] = frozenset(),
+                        bridge: GBABridgeProtocol | None = None,
+                        hm_usable: frozenset[str] = frozenset()) -> WarpTransition | None:
+        route = self.find_route(start, goal, completed, current_xy, bridge, hm_usable=hm_usable)
         return route[0] if route else None
+
+    @staticmethod
+    def estimate_route_cost(route: Iterable[WarpTransition], current_xy: XY) -> float:
+        """Walking lower bound plus transition costs, in tile-equivalent units.
+
+        Consumers comparing hospitals or training areas must account for the
+        walk to every exit instead of treating a city-wide walk as one frame.
+        """
+        total = 0.0
+        position = current_xy
+        for edge in route:
+            total += edge.cost + min(abs(x - position[0]) + abs(y - position[1])
+                                     for x, y in HierarchicalWarpGraph._approach_tiles(edge))
+            position = edge.destination_xy
+        return total
 
     def shortest_path(self, start: MapKey, goal: MapKey) -> list[MapKey] | None:
         route = self.find_route(start, goal)
@@ -338,4 +683,5 @@ class HierarchicalWarpGraph:
                                            not all(isinstance(v, int) for v in row) for row in raw):
             raise ValueError("Invalid persisted transition obstacles")
         self.blocked_transitions = {cast(tuple[int, int, int, int, int, int], tuple(row)) for row in raw}
+        self._coarse_reachability_cache = None
 

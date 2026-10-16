@@ -11,12 +11,44 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
+from core.battle.move_learning import MoveLearningChoice, choose_move_to_forget, rom_hm_moves, rom_move_summary
 from core.bridge.ffi_mgba import GBABridgeProtocol
-from core.game_data import Game, RomCatalog
+from core.game_data import Game, RomCatalog, load_symbols
 
 CommandKind = Literal["move", "switch", "ball", "run", "cancel"]
+# Screens owned by another controller; battle input must stay neutral there.
+FOREIGN_SCENES = frozenset({"evolution"})
+
+
+@lru_cache(maxsize=2)
+def _native_party_bindings(game: str) -> tuple[int, int, frozenset[int]]:
+    symbols = load_symbols(cast(Game, game))
+    tasks = {"Task_HandleChooseMonInput", "Task_HandleSelectionMenuInput", "Task_ReturnToChooseMonAfterText",
+             "Task_PrintAndWaitForText", "Task_ClosePartyMenu", "Task_ClosePartyMenuAndSetCB2"}
+    return (symbols["gBattlePartyCurrentOrder"].address, symbols["CB2_UpdatePartyMenu"].address & ~1,
+            frozenset(symbols[name].address & ~1 for name in tasks if name in symbols))
+
+
+def native_party_slot_order(bridge: GBABridgeProtocol) -> tuple[int, ...] | None:
+    """Map visual Party slots to stable battle party IDs while its UI is open.
+
+    Native Party temporarily reorders gPlayerParty. Its three packed bytes use
+    the high nibble for even visual slots and low nibble for odd slots. No map is
+    inferred outside this UI, or from an uninitialized/non-permutation buffer.
+    """
+    if not bridge.is_in_battle()[0]:
+        return None
+    order_address, callback, task_functions = _native_party_bindings(bridge.memory_map.game)
+    party_screen = bridge.read_u32(bridge.memory_map.main + 4) & ~1 == callback
+    if not party_screen:
+        party_screen = any(bridge.read_u8(bridge.memory_map.tasks + 40 * slot + 4) and
+            bridge.read_u32(bridge.memory_map.tasks + 40 * slot) & ~1 in task_functions for slot in range(16))
+    if not party_screen:
+        return None
+    order = tuple(nibble for value in bridge.read_memory(order_address, 3) for nibble in (value >> 4, value & 15))
+    return order if sorted(order) == list(range(6)) else None
 
 
 @lru_cache(maxsize=2)
@@ -82,6 +114,8 @@ class BattleMenuCursorController:
         self._learning_move = 0
         self._learning_slot: int | None = None
         self._learning_party_index: int | None = None
+        self.last_learning_choice: MoveLearningChoice | None = None
+        self._switch_identity: tuple[int, int] | None = None
         self._input_callbacks = native_player_input_callbacks(bridge.memory_map.game)
         self._native_symbols = self._load_menu_symbols()
 
@@ -92,10 +126,16 @@ class BattleMenuCursorController:
                   "HandleInputChooseTarget", "gPartyMenu", "Task_HandleChooseMonInput", "gMultiUsePlayerCursor",
                   "Task_HandleSelectionMenuInput", "Task_BagMenu_HandleInput", "Task_FieldItemContextMenuHandleInput",
                   "Task_ItemContext_SingleRow", "Task_ItemContext_MultipleRows", "gBagMenuState", "gBagPosition", "sMenu",
-                  "gBattlerPositions", "gBattlerPartyIndexes", "sTextPrinters", "gBattlescriptCurrInstr",
+                  "gBattlerPositions", "gBattlerPartyIndexes", "gBattlersCount", "gBattlePartyCurrentOrder",
+                  "sTextPrinters", "gBattlescriptCurrInstr",
                   "gBattleScripting", "gBattleCommunication", "gBattleStruct", "gMoveToLearn", "sMonSummaryScreen",
                   "sMoveSelectionCursorPos", "Task_InputHandler_SelectOrForgetMove", "Task_HandleReplaceMoveInput",
-                  "Task_HandleInputCantForgetHMsMoves"}
+                  "Task_HandleInputCantForgetHMsMoves", "Task_ReturnToChooseMonAfterText", "Task_PrintAndWaitForText",
+                  "Task_DisplayCaughtMonDexPage", "Task_HandleCaughtMonPageInput", "Task_ExitCaughtMonPage",
+                  "Task_HandlePokedexInput", "Task_ShowPokedexAreaScreen", "Task_HandlePokedexAreaScreenInput",
+                  "Task_DexScreen_RegisterMonToPokedex", "Task_PokedexScreen", "Task_DexScreen_ShowMonPage",
+                  "Task_DexScreen_CategorySubmenu", "Task_DexScreen_NumericalOrder", "Task_DexScreen_CharacteristicOrder",
+                  "Task_EvolutionScene", "Task_TradeEvolutionScene", "gBattlerAttacker"}
         result: dict[str, int] = {}
         pattern = re.compile(r"^([0-9a-fA-F]{8})\s+\w\s+([0-9a-fA-F]{8})\s+(\S+)$")
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -128,7 +168,8 @@ class BattleMenuCursorController:
                 "started": self._started, "phase": self._phase,
                 "initial_item_count": self._initial_item_count, "input_battler": self._input_battler,
                 "learning_move": self._learning_move, "learning_slot": self._learning_slot,
-                "learning_party_index": self._learning_party_index}
+                "learning_party_index": self._learning_party_index,
+                "switch_identity": list(self._switch_identity) if self._switch_identity is not None else None}
 
     @staticmethod
     def _checkpoint_int(state: Mapping[str, object], name: str, minimum: int,
@@ -178,6 +219,13 @@ class BattleMenuCursorController:
         learning_party = state.get("learning_party_index")
         if learning_party is not None and (type(learning_party) is not int or not 0 <= learning_party < 6):
             raise ValueError("invalid checkpoint learning party index")
+        switch_identity: tuple[int, int] | None = None
+        identity = state.get("switch_identity")
+        if identity is not None:
+            if (not isinstance(identity, list) or len(identity) != 2 or
+                    any(type(value) is not int or not 0 <= value <= 0xFFFFFFFF for value in identity)):
+                raise ValueError("invalid checkpoint replacement identity")
+            switch_identity = (cast(int, identity[0]), cast(int, identity[1]))
         # No live party decode, input injection or frame advancement occurs here;
         # an emulator savestate can be inside the game's temporary plaintext window.
         self.pending = pending
@@ -187,6 +235,7 @@ class BattleMenuCursorController:
         self._initial_item_count, self._input_battler = initial_count, battler
         self._learning_move, self._learning_slot = learning_move, learning_slot
         self._learning_party_index = learning_party
+        self._switch_identity = switch_identity
 
     def request_command(self, kind: CommandKind, index: int = 0,
                         target: int = 0, item: int = 4) -> None:
@@ -200,8 +249,21 @@ class BattleMenuCursorController:
             raise ValueError("party index must be 0..5")
         if kind == "switch":
             party = self.bridge.get_decrypted_player_party()
-            if index >= len(party) or int(party[index]["hp"]) < 1:
+            order = native_party_slot_order(self.bridge)
+            party_slot = order.index(index) if order is not None else index
+            if party_slot >= len(party) or int(party[party_slot]["hp"]) < 1:
                 raise ValueError("replacement must be a healthy party member")
+            if bool(party[party_slot].get("is_egg", False)):
+                raise ValueError("an Egg cannot be a battle replacement")
+            if self.bridge.menu_state().mode == "battle":
+                count = self.bridge.read_u8(self._native_symbols["gBattlersCount"])
+                if count in (2, 4):
+                    positions = self.bridge.read_memory(self._native_symbols["gBattlerPositions"], count)
+                    active = {self.bridge.read_u16(self._native_symbols["gBattlerPartyIndexes"] + 2 * slot)
+                              for slot, position in enumerate(positions) if position in (0, 2)}
+                    if index in active:
+                        raise ValueError("replacement is already active in battle")
+            self._switch_identity = (int(party[party_slot]["pid"]), int(party[party_slot]["otid"]))
         if not 0 <= target < 3 or item < 1:
             raise ValueError("invalid target/item")
         self.pending = BattleCommand(kind, index, target, item)
@@ -234,6 +296,7 @@ class BattleMenuCursorController:
         self.pending = None
         self._held = self._hold_left = self._release_left = 0
         self._phase = "initial"
+        self._switch_identity = None
 
     def _pulse(self, key: int, complete: bool = False) -> int:
         self._held = key
@@ -243,31 +306,52 @@ class BattleMenuCursorController:
             self.pending = None
         return key
 
+    def _native_task_mode(self) -> str | None:
+        """Resolve active screens before inspecting suspended battle callbacks.
+
+        Opening Bag/Party leaves the battler controller pointer in memory while
+        another main callback owns input. Outside battle those pointers and the
+        battle script are stale, so they must never classify the field screen.
+        """
+        task_modes = (("evolution", "Task_EvolutionScene"), ("evolution", "Task_TradeEvolutionScene"),
+                      ("party_error", "Task_ReturnToChooseMonAfterText"),
+                      ("party_error", "Task_PrintAndWaitForText"),
+                      ("party", "Task_HandleChooseMonInput"), ("party_context", "Task_HandleSelectionMenuInput"),
+                      ("bag", "Task_BagMenu_HandleInput"), ("bag_context", "Task_FieldItemContextMenuHandleInput"),
+                      ("bag_context", "Task_ItemContext_SingleRow"), ("bag_context", "Task_ItemContext_MultipleRows"),
+                      ("learn_forget", "Task_InputHandler_SelectOrForgetMove"), ("learn_forget", "Task_HandleReplaceMoveInput"),
+                      ("learn_forget", "Task_HandleInputCantForgetHMsMoves"),
+                      ("pokedex", "Task_DisplayCaughtMonDexPage"), ("pokedex", "Task_HandleCaughtMonPageInput"),
+                      ("pokedex", "Task_ExitCaughtMonPage"), ("pokedex", "Task_HandlePokedexInput"),
+                      ("pokedex", "Task_ShowPokedexAreaScreen"), ("pokedex", "Task_HandlePokedexAreaScreenInput"),
+                      ("pokedex", "Task_DexScreen_RegisterMonToPokedex"), ("pokedex", "Task_PokedexScreen"),
+                      ("pokedex", "Task_DexScreen_ShowMonPage"), ("pokedex", "Task_DexScreen_CategorySubmenu"),
+                      ("pokedex", "Task_DexScreen_NumericalOrder"), ("pokedex", "Task_DexScreen_CharacteristicOrder"))
+        active_tasks = {self.bridge.read_u32(self.bridge.memory_map.tasks + slot * 40) & ~1
+                        for slot in range(16) if self.bridge.read_u8(self.bridge.memory_map.tasks + slot * 40 + 4)}
+        for mode, symbol in task_modes:
+            if self._native_symbols.get(symbol) in active_tasks:
+                return mode
+        return None
+
     def _native_mode(self) -> str:
         callbacks = self._native_symbols["gBattlerControllerFuncs"]
         pointers = {slot: self.bridge.read_u32(callbacks + slot * 4) & ~1 for slot in (0, 2)}
+        # The screen task takes input priority, but its requesting player actor
+        # still comes from the replacement callback (including right-side faints).
+        for battler, pointer in pointers.items():
+            if pointer in self._input_callbacks["replacement"]:
+                self._input_battler = battler
+                break
+        task_mode = self._native_task_mode()
+        if task_mode is not None:
+            return task_mode
         for mode in ("action", "move", "target"):
             addresses = self._input_callbacks[mode]
             for battler, pointer in pointers.items():
                 if pointer in addresses:
                     self._input_battler = battler
                     return mode
-        # A fainted right-side actor can enter Party without ever exposing its
-        # action callback. Preserve the requesting controller's battler identity.
-        for battler, pointer in pointers.items():
-            if pointer in self._input_callbacks["replacement"]:
-                self._input_battler = battler
-                break
-        task_modes = (("party", "Task_HandleChooseMonInput"), ("party_context", "Task_HandleSelectionMenuInput"),
-                      ("bag", "Task_BagMenu_HandleInput"), ("bag_context", "Task_FieldItemContextMenuHandleInput"),
-                      ("bag_context", "Task_ItemContext_SingleRow"), ("bag_context", "Task_ItemContext_MultipleRows"),
-                      ("learn_forget", "Task_InputHandler_SelectOrForgetMove"), ("learn_forget", "Task_HandleReplaceMoveInput"),
-                      ("learn_forget", "Task_HandleInputCantForgetHMsMoves"))
-        active_tasks = {self.bridge.read_u32(self.bridge.memory_map.tasks + slot * 40) & ~1
-                        for slot in range(16) if self.bridge.read_u8(self.bridge.memory_map.tasks + slot * 40 + 4)}
-        for mode, symbol in task_modes:
-            if self._native_symbols.get(symbol) in active_tasks:
-                return mode
         script = self.bridge.read_u32(self._native_symbols["gBattlescriptCurrInstr"])
         if 0x08000000 <= script < 0x0A000000:
             opcode = self.bridge.read_u8(script)
@@ -277,6 +361,12 @@ class BattleMenuCursorController:
                 return "level_stats"
             if learn_state == 1 and opcode in (0x5A, 0x5B):
                 return "learn_yesno" if opcode == 0x5A else "learn_stop"
+            if opcode == 0xF2:
+                return "pokedex"
+            if opcode == 0xF3:
+                return "caught_nickname"
+            if opcode == 0x67:
+                return "battle_yesno"
         if self._text_waiting():
             return "text"
         return "animation"
@@ -292,7 +382,41 @@ class BattleMenuCursorController:
 
     def menu_mode(self) -> str:
         observed = self.bridge.menu_state()
-        return self._native_mode() if observed.mode == "battle" else observed.mode
+        if observed.mode == "battle":
+            return self._native_mode()
+        if observed.mode in ("overworld", "script"):
+            return self._native_task_mode() or observed.mode
+        return observed.mode
+
+    def recovery_key(self, mode: str | None = None) -> int | None:
+        """Return one safe dismissal edge for a screen with no active intent.
+
+        A successful key submission is not evidence that a native menu consumed
+        it. This path lets an interrupted/checkpointed Bag return to battle, and
+        closes an accidental field menu without using or discarding an item.
+        None leaves ordinary field navigation and script choices to their owner.
+        """
+        mode = self.menu_mode() if mode is None else mode
+        battle = self.bridge.is_in_battle()[0]
+        if mode in FOREIGN_SCENES:
+            return None
+        if mode in ("bag", "bag_context", "party", "party_context", "party_error"):
+            key = self.bridge.KEY_B
+        elif mode == "pokedex":
+            key = self.bridge.KEY_A if battle else self.bridge.KEY_B
+        elif battle and mode in ("caught_nickname", "battle_yesno"):
+            key = self.bridge.KEY_B
+        elif battle and mode in ("level_stats", "text"):
+            key = self.bridge.KEY_A
+        else:
+            return None
+        if self._hold_left:
+            self._hold_left -= 1
+            return self._held
+        if self._release_left:
+            self._release_left -= 1
+            return 0
+        return self._pulse(key)
 
     def observe_menu(self) -> BattleMenuObservation:
         """Expose accepting cursors for double battles and orchestration readiness."""
@@ -357,27 +481,38 @@ class BattleMenuCursorController:
             return self.bridge.KEY_DOWN if current_row < desired_row else self.bridge.KEY_UP
         return self.bridge.KEY_A
 
+    def _learning_recipient(self, party: list[dict[str, Any]]) -> int:
+        """gBattleStruct->expGetterMonId names the recipient; fall back to the active mon."""
+        pointer = self.bridge.read_u32(self._native_symbols["gBattleStruct"])
+        if 0x02000000 <= pointer <= 0x0203FFEF:
+            index = self.bridge.read_u8(pointer + 0x10)
+            if index < len(party):
+                return index
+        # A freed/reallocated struct must not stall learning: use the actor in
+        # battler slot 0, which is the mon gaining experience in singles.
+        index = self.bridge.read_u16(self._native_symbols["gBattlerPartyIndexes"])
+        if index < len(party):
+            return index
+        raise ValueError("level-up recipient is outside the current party")
+
     def _prepare_learning_choice(self) -> None:
-        """Select a replaceable low-power move, preserving all eight native HMs."""
+        """Keep strong moves: replace the weakest non-HM only if the new move is better."""
         new_move = self.bridge.read_u16(self._native_symbols["gMoveToLearn"])
         if not 1 <= new_move <= 354:
             raise ValueError("invalid level-up move identity")
-        pointer = self.bridge.read_u32(self._native_symbols["gBattleStruct"])
-        if not 0x02000000 <= pointer <= 0x0203FFEF:
-            raise ValueError("invalid native battle structure for move learning")
-        party_index = self.bridge.read_u8(pointer + 0x10)
         party = self.bridge.get_decrypted_player_party()
-        if party_index >= len(party):
-            raise ValueError("level-up recipient is outside the current party")
+        party_index = self._learning_recipient(party)
         if self._learning_catalog is None:
             game: Game = "emerald" if self.bridge.memory_map.game == "emerald" else "firered"
             self._learning_catalog = RomCatalog(game)
         catalog = self._learning_catalog
-        hms = {catalog.tmhm_move(item) for item in range(339, 347)}
-        old_moves = [int(move) for move in party[party_index]["moves"]]
-        replaceable = [slot for slot, move in enumerate(old_moves) if move not in hms]
-        chosen = min(replaceable, key=lambda slot: (catalog.move(old_moves[slot]).power, slot)) if replaceable else None
-        self._learning_move, self._learning_slot = new_move, chosen
+        mon = party[party_index]
+        species = int(mon["species"])
+        types = catalog.species(species).types if 0 < species < catalog.species_count else ()
+        choice = choose_move_to_forget([int(move) for move in mon["moves"]], new_move,
+                                       rom_move_summary(catalog), rom_hm_moves(catalog), types)
+        self.last_learning_choice = choice
+        self._learning_move, self._learning_slot = new_move, choice.forget_slot
         self._learning_party_index = party_index
 
     def _learning_key(self, mode: str) -> int:
@@ -416,14 +551,25 @@ class BattleMenuCursorController:
             return 0
         if self.bridge.is_in_battle()[0] and self.bridge.menu_state().mode == "battle":
             mode = self.menu_mode()
-            if mode == "level_stats":
+            if mode in FOREIGN_SCENES:
+                # Post-battle evolution keeps inBattle set; its controller owns input.
+                self.cancel()
+                return 0
+            if mode == "party_error":
+                # A native rejection (already active, trapped, fainted, Egg) is
+                # not a completed switch. Dismiss it and let the policy replan.
+                self.cancel()
+                return self._pulse(self.bridge.KEY_B)
+            if mode in ("level_stats", "pokedex"):
                 return self._pulse(self.bridge.KEY_A)
+            if mode in ("caught_nickname", "battle_yesno"):
+                return self._pulse(self.bridge.KEY_B)
             if mode in ("learn_yesno", "learn_stop", "learn_forget"):
                 return self._learning_key(mode)
         command = self.pending
         if command is None:
-            if self.bridge.is_in_battle()[0] and self.menu_mode() == "text":
-                return self._pulse(self.bridge.KEY_A)
+            if self.bridge.is_in_battle()[0]:
+                return self.recovery_key() or 0
             return 0
         if self.bridge.frame_count - self._started > self.timeout_frames:
             self.cancel()
@@ -464,21 +610,36 @@ class BattleMenuCursorController:
             return self._pulse(self.bridge.KEY_A if current == desired_target else self.bridge.KEY_RIGHT,
                                complete=current == desired_target)
         if mode == "party" and command.kind in ("switch", "ball"):
+            desired_index = command.index
+            if command.kind == "switch" and self._switch_identity is not None:
+                # Opening Party can reorder gPlayerParty to display/battle order.
+                # Track the requested individual instead of replaying a stale row.
+                party = self.bridge.get_decrypted_player_party()
+                matches = [index for index, mon in enumerate(party)
+                           if (int(mon["pid"]), int(mon["otid"])) == self._switch_identity]
+                if len(matches) != 1:
+                    self.cancel()
+                    return self._pulse(self.bridge.KEY_B)
+                desired_index = matches[0]
             observed = self.bridge.menu_state()
             if observed.mode == "party":
                 cursor, _ = self.bridge.get_battle_cursors()
-                direction = self._grid_key(cursor, command.index)
+                direction = self._grid_key(cursor, desired_index)
             else:
                 # gPartyMenu.slotId is +9 in both pinned generation-three structs.
                 cursor = self.bridge.read_u8(self._native_symbols["gPartyMenu"] + 9)
-                direction = self.bridge.KEY_DOWN if cursor < command.index else (self.bridge.KEY_UP if cursor > command.index else 0)
+                direction = self.bridge.KEY_DOWN if cursor < desired_index else (self.bridge.KEY_UP if cursor > desired_index else 0)
             if not direction:
                 self._phase = "party_confirm"
             return self._pulse(direction or self.bridge.KEY_A, complete=not direction and not native)
         if mode == "party_context" and command.kind == "switch":
             # Shift / Send Out is the first action in the in-battle context.
             cursor = self.bridge.read_u8(self._native_symbols["sMenu"] + 2)
-            return self._pulse(self.bridge.KEY_UP if cursor else self.bridge.KEY_A, complete=cursor == 0)
+            if not cursor:
+                self._phase = "party_confirm"
+            # Keep the chosen replacement until the game returns to its battle
+            # action screen. A can be ignored during the native palette fade.
+            return self._pulse(self.bridge.KEY_UP if cursor else self.bridge.KEY_A)
         if mode == "bag" and command.kind == "ball":
             if not native:
                 return self._pulse(self.bridge.KEY_A, complete=True)
@@ -491,8 +652,10 @@ class BattleMenuCursorController:
             cursor = self.bridge.read_u8(self._native_symbols["sMenu"] + 2)
             if not cursor:
                 self._phase = "item_used"
-            return self._pulse(self.bridge.KEY_UP if cursor else self.bridge.KEY_A,
-                               complete=not cursor and 1 <= command.item <= 12)
+            # Retain intent until RAM confirms consumption. The first A edge can
+            # arrive while the context task is still initializing and be ignored.
+            # Clearing pending here strands the battle inside Bag indefinitely.
+            return self._pulse(self.bridge.KEY_UP if cursor else self.bridge.KEY_A)
         if mode in ("script", "text"):
             return self._pulse(self.bridge.KEY_A)
         return 0

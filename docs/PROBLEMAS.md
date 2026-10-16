@@ -43,6 +43,18 @@ Confirma que `live.json` y `live.rgb` cambien de fecha/tamaño. Si usaste una ra
 
 La ventana gráfica es un lector; congelar su UI no envía botones ni salva la partida. Revisa el timestamp de `live.json`, el PID con `Get-CimInstance Win32_Process`, y los logs. Cierra el visor con `Esc`, deja el worker en ejecución y vuelve a abrirlo. Usa `--stop` para terminar ordenadamente y luego `resume` si el estado del worker no progresa.
 
+## La estación de monitoreo no abre o dice "Sin conexión con el servidor"
+
+`.\ARES.ps1 dashboard` levanta un servidor local en `http://127.0.0.1:8765/`. Si el puerto está ocupado (error de dirección en uso), elige otro: `.\ARES.ps1 dashboard -Port 8800`. "Sin conexión" en la página significa que el proceso del servidor terminó: vuelve a lanzarlo. Si la página carga pero dice "Sin datos" o "Esperando el emulador", los workers no han publicado todavía en esa raíz: confirma que la campaña corre y que usas la misma `--checkpoint-root`. La estación solo lee archivos; cerrarla nunca detiene una campaña.
+
+## Aparecen `stall_detected`, `agent_fault` o `stall_rewind` en la línea de tiempo
+
+El watchdog detectó falta de progreso y aplicó un escalón de recuperación, o la política contuvo una excepción y replanificó. Un `stall_rewind` cargó un checkpoint previo. Consulta también el reloj **Sin avance de historia**: seguir ganando niveles no demuestra que la campaña progrese. Si se agota el presupuesto de recuperación, conserva `events.jsonl`, `status.json` y el último `frame-*` para diagnosticar (ver [recuperación autónoma](RECUPERACION_AUTONOMA.md)). Para conservar un checkpoint concreto, crea dentro un archivo vacío llamado `PINNED`.
+
+## El supervisor reinicia el worker una y otra vez
+
+Revisa `supervisor-events.jsonl` (o el panel "Supervisor de procesos" de la estación): cada reinicio indica el error, la espera y la semilla. Los errores de configuración no se reintentan. Incluso con reinicios generales ilimitados existe un presupuesto consecutivo sin nueva historia: `recovery_blocked` significa que se agotó y se conservó el checkpoint. Para limitar también el total usa `.\.venv\Scripts\python.exe -m scripts.run_campaign --game both --resume --max-restarts 5`. El avance de frames o XP no renueva el presupuesto de historia.
+
 ## Campaña terminó antes de llegar al Campeón
 
 No es certificación. Examina `status.json`, `events.jsonl`, `latest.png`, derrotas/desmayos y el motivo de salida. Reanuda desde el último checkpoint con `.ARES.ps1 resume -Game <firered|emerald|both> -Background`. El sistema no afirma supervivencia absoluta: las decisiones no demostradas se registran y pueden ocurrir derrotas.

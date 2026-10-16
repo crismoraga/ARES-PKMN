@@ -378,6 +378,45 @@ class EpistemicCausalController:
             self.intervention_count[observation.attack_type, defender] += 1
         return gain
 
+    def observe_effectiveness(self, attack_type: int, defender_types: Sequence[int], flag: str) -> float:
+        """Condition on a visible effectiveness message alone (no damage number).
+
+        Used for the opponent's hits on the agent and for remembered facts that
+        are replayed into a fresh posterior. Returns the posterior KL gain.
+        """
+        _type_id(attack_type)
+        defenders = self._defenders(defender_types)
+        if attack_type == TYPE_MYSTERY or TYPE_MYSTERY in defenders:
+            return 0.0
+        previous = self._joint(attack_type, defenders)
+        products = self._products(defenders)
+        likelihood = self._text_likelihood(flag, products)
+        if np.all(likelihood == 1.0):
+            return 0.0
+        updated = previous * likelihood
+        total = float(updated.sum())
+        if total <= 0.0:
+            return 0.0
+        updated /= total
+        support = updated > 0.0
+        gain = float(np.sum(updated[support] * np.log(updated[support] / np.maximum(previous[support], 1e-300))))
+        if len(defenders) == 1:
+            self.posterior[attack_type, defenders[0]] = updated
+            self._propagate_joint_evidence(attack_type, defenders)
+        else:
+            first, second = defenders
+            key = (attack_type, first, second)
+            first_marginal = updated.sum(axis=1)
+            second_marginal = updated.sum(axis=0)
+            self.posterior[attack_type, first] = first_marginal
+            self.posterior[attack_type, second] = second_marginal
+            self._pairs[key] = updated.copy()
+            self._pair_marginals[key] = (first_marginal.copy(), second_marginal.copy())
+            self._propagate_joint_evidence(attack_type, defenders, key)
+        for defender in defenders:
+            self.intervention_count[attack_type, defender] += 1
+        return gain
+
     def efficacy_distribution(
         self, attack_type: int, defender_types: Sequence[int]
     ) -> dict[float, float]:

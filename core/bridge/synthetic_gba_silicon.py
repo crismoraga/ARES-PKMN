@@ -518,10 +518,10 @@ class SyntheticGBASiliconBridge(GBAMemoryReader):
                 efficacy_den *= 2
         context = DamageContext(level=int(attacker.level), attack=atk, defense=defense,
             power=move.power, move_type=move.move_type, type_modifiers=tuple(modifiers) or ((1, 1),),
-            category="special" if move.special else "physical",
+            category="special" if move.move_type >= 10 else "physical",
             stab=move.move_type in (int(attacker.type1), int(attacker.type2)),
-            attack_stage=int(attacker.statStages[4 if move.special else 1]),
-            defense_stage=int(defender.statStages[5 if move.special else 2]),
+            attack_stage=int(attacker.statStages[4 if move.move_type >= 10 else 1]),
+            defense_stage=int(defender.statStages[5 if move.move_type >= 10 else 2]),
             attacker_status=int(attacker.status1), defender_status=int(defender.status1),
             attacker_ability=int(attacker.ability), defender_ability=int(defender.ability),
             attacker_species=int(attacker.species), defender_species=int(defender.species),

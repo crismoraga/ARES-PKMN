@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 import torch
 from torch import Tensor
 
-from core.battle.menu_cursor_controller import native_player_input_callbacks
+from core.battle.menu_cursor_controller import native_party_slot_order, native_player_input_callbacks
 from core.bridge.ffi_mgba import GBABridgeProtocol
 from core.bridge.gba_structs import BattlePokemonStruct
 from core.game_data import Game, RomCatalog, RomSymbol, load_symbols
@@ -136,6 +136,23 @@ def _native_acting_battler(bridge: GBABridgeProtocol, symbols: dict[str, RomSymb
     return 0
 
 
+def player_party_in_battle_order(bridge: GBABridgeProtocol) -> list[dict[str, Any]]:
+    """Normalize the temporary native Party-screen permutation for policy use."""
+    party = bridge.get_decrypted_player_party()
+    order = native_party_slot_order(bridge)
+    if order is None:
+        return party
+    normalized: list[dict[str, Any] | None] = [None] * len(party)
+    for visual_slot, mon in enumerate(party):
+        stable_slot = order[visual_slot]
+        if stable_slot >= len(party):
+            raise ValueError("Native party menu order does not match the party span")
+        normalized[stable_slot] = mon
+    if any(mon is None for mon in normalized):
+        raise ValueError("Native party menu order is incomplete")
+    return cast(list[dict[str, Any]], normalized)
+
+
 def encode_battle(bridge: GBABridgeProtocol, knowledge: OpponentKnowledge,
                   active_party_index: int = 0, catalog: RomCatalog | None = None,
                   acting_battler: int | None = None) -> BattleFeatures:
@@ -148,7 +165,7 @@ def encode_battle(bridge: GBABridgeProtocol, knowledge: OpponentKnowledge,
     """
     if active_party_index < 0 or active_party_index > 5 or acting_battler not in (None, 0, 2):
         raise ValueError("invalid own active party/battler index")
-    party = bridge.get_decrypted_player_party()  # fail on transient/corrupt party snapshots
+    party = player_party_in_battle_order(bridge)  # fail on transient/corrupt party snapshots
     native = bridge.menu_state().mode == "battle"
     doubles = bool(bridge.read_u32(bridge.memory_map.battle_flags) & 1)
     slots = [0, 1, 2, 3] if doubles else [0, 1]

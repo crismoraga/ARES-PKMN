@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from core.battle.menu_cursor_controller import BattleMenuCursorController
 from core.bridge.gba_structs import ObjectEventStruct
 from core.bridge.synthetic_gba_silicon import SyntheticGBASiliconBridge, SyntheticWarp
 from core.navigation.constrained_astar import GbaConstrainedAStar
@@ -317,7 +318,8 @@ def test_route1_mart_route_pays_walking_cost_in_every_map_and_never_loops() -> N
     route = graph.find_route((3, 19), (5, 3), current_xy=(12, 39))
     assert route is not None
     assert [edge.destination for edge in route] == [(3, 1), (5, 3)]
-    assert route[0].source_xy == (12, 0)
+    # Real local walking costs include the ledge detour north of the start.
+    assert route[0].source_xy == (13, 0)
     source = load_map_catalog("firered")
     pallet = source.by_name["PalletTown"]
     assert not any(edge.destination == source.by_name["Route21_North"] for edge in graph.transitions_from(pallet))
@@ -358,3 +360,33 @@ def test_all_three_ice_tiers_produce_legal_commands_from_official_layout(start_y
         assert commands[-1]["dest"][2] == (8, exit_y)
     finally:
         bridge.close()
+
+
+def test_battle_menu_controller_pokedex_and_nickname_modes(monkeypatch: pytest.MonkeyPatch) -> None:
+    bridge = SyntheticGBASiliconBridge(True)
+    try:
+        monkeypatch.setattr(bridge, "is_in_battle", lambda: (True, False))
+        controller = BattleMenuCursorController(bridge)
+        assert "Task_HandleCaughtMonPageInput" in controller._native_symbols
+        assert "Task_DisplayCaughtMonDexPage" in controller._native_symbols
+        assert "Task_ExitCaughtMonPage" in controller._native_symbols
+
+        # Verify pokedex mode pulses KEY_A
+        monkeypatch.setattr(controller, "menu_mode", lambda: "pokedex")
+        assert controller.tick() == bridge.KEY_A
+
+        # Reset hold/release state between tests
+        controller.cancel()
+
+        # Verify caught_nickname mode pulses KEY_B to decline nickname
+        monkeypatch.setattr(controller, "menu_mode", lambda: "caught_nickname")
+        assert controller.tick() == bridge.KEY_B
+
+        controller.cancel()
+
+        # Verify battle_yesno mode pulses KEY_B
+        monkeypatch.setattr(controller, "menu_mode", lambda: "battle_yesno")
+        assert controller.tick() == bridge.KEY_B
+    finally:
+        bridge.close()
+

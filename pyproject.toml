@@ -22,6 +22,9 @@ ares-setup = "scripts.setup_environment:main"
 [tool.setuptools.packages.find]
 include = ["core*", "scripts*"]
 
+[tool.setuptools.package-data]
+scripts = ["dashboard_static/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"

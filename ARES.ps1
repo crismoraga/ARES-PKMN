@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('run', 'resume', 'status', 'train', 'verify', 'setup', 'demo', 'watch')]
+    [ValidateSet('run', 'resume', 'status', 'train', 'verify', 'setup', 'demo', 'watch', 'dashboard')]
     [string]$Action = 'status',
     [ValidateSet('firered', 'emerald', 'both')]
     [string]$Game = 'both',
@@ -10,7 +10,9 @@ param(
     [int]$MaxFrames,
     [switch]$Background,
     [switch]$Quick,
-    [string]$SnapshotPath
+    [string]$SnapshotPath,
+    [ValidateRange(1, 65535)]
+    [int]$Port = 8765
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,14 +27,25 @@ if (-not (Test-Path -LiteralPath $aresPython)) {
 
 $aresArguments = switch ($Action) {
     'setup' { @('-m', 'scripts.setup_environment') }
-    'train' { @('-m', 'scripts.train_neural_modules') }
+    'train' {
+        $aresTrainArgs = @('-m', 'scripts.train_neural_modules')
+        if (Test-Path (Join-Path $aresRoot 'artifacts\checkpoints\neural.pt')) {
+            $aresTrainArgs += '--resume'
+        }
+        $aresTrainArgs
+    }
     'verify' {
         if ($Quick) { @('-m', 'scripts.verify_installation', '--quick') }
         else { @('-m', 'scripts.verify_installation') }
     }
     'demo' { @('-m', 'scripts.run_autonomous_verification_demo') }
+    'dashboard' {
+        $aresDashboardArgs = @('-m', 'scripts.dashboard', '--backend', $Backend, '--port', $Port.ToString())
+        if ($Background) { $aresDashboardArgs += '--no-browser' }
+        $aresDashboardArgs
+    }
     'watch' {
-        $aresWatchArgs = @('-m', 'scripts.watch_campaign')
+        $aresWatchArgs = @('-m', 'scripts.watch_campaign', '--backend', $Backend)
         if ($PSBoundParameters.ContainsKey('SnapshotPath')) {
             $aresWatchArgs += @('--snapshot', $SnapshotPath)
         }
@@ -52,8 +65,8 @@ if ($Background) {
     if ($Action -eq 'watch') {
         throw 'El visor necesita una ventana visible; ejecútalo en primer plano con .\ARES.ps1 watch.'
     }
-    if ($Action -notin @('run', 'resume', 'train', 'verify', 'demo')) {
-        throw '-Background se admite para run, resume, train, verify y demo.'
+    if ($Action -notin @('run', 'resume', 'train', 'verify', 'demo', 'dashboard')) {
+        throw '-Background se admite para run, resume, train, verify, demo y dashboard.'
     }
     $aresLogDirectory = Join-Path $aresRoot 'artifacts\processes'
     New-Item -ItemType Directory -Force -Path $aresLogDirectory | Out-Null
@@ -69,7 +82,12 @@ if ($Background) {
     }
     $aresState = @{ pid = $aresProcess.Id; action = $Action; game = $Game; backend = $Backend;
                    stdout = $aresStdout; stderr = $aresStderr; executable = $aresLive.ExecutablePath }
-    $aresState | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $aresLogDirectory 'latest.json') -Encoding utf8
+    if ($Action -eq 'dashboard') {
+        $aresState.url = "http://127.0.0.1:$Port/"
+        Set-Content -LiteralPath (Join-Path $aresLogDirectory 'dashboard.json') -Value ($aresState | ConvertTo-Json) -Encoding utf8
+    } else {
+        $aresState | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $aresLogDirectory 'latest.json') -Encoding utf8
+    }
     $aresState | ConvertTo-Json
 } else {
     Push-Location $aresRoot

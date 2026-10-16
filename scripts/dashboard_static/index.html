@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARES · Estación de monitoreo</title>
+<style>
+:root {
+  --bg: #0b1018; --panel: #121a26; --panel-2: #172131; --line: #233047; --line-soft: #1b2638;
+  --text: #e7edf6; --muted: #93a4ba; --faint: #64748b;
+  --green: #4ade80; --green-soft: rgba(74, 222, 128, .14);
+  --amber: #fbbf24; --amber-soft: rgba(251, 191, 36, .14);
+  --red: #f87171; --red-soft: rgba(248, 113, 113, .14);
+  --blue: #60a5fa; --blue-soft: rgba(96, 165, 250, .14);
+  --violet: #a78bfa; --cyan: #22d3ee; --pink: #f472b6;
+  --fr: #f97316; --em: #10b981;
+  --radius: 12px; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f3f6fa; --panel: #ffffff; --panel-2: #f6f8fb; --line: #dbe3ee; --line-soft: #e8eef5;
+    --text: #0f172a; --muted: #475569; --faint: #94a3b8;
+    --green: #16a34a; --amber: #b45309; --red: #dc2626; --blue: #2563eb;
+    color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; }
+button { font: inherit; color: inherit; }
+.topbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 18px;
+  padding: 10px 20px; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; letter-spacing: .04em; white-space: nowrap; }
+.brand span { font-weight: 400; color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+.tabs { display: flex; gap: 4px; }
+.tabs button { background: transparent; border: 1px solid transparent; padding: 6px 14px; border-radius: 999px;
+  cursor: pointer; color: var(--muted); }
+.tabs button:hover { color: var(--text); background: var(--panel); }
+.tabs button.active { color: var(--text); background: var(--panel-2); border-color: var(--line); }
+.tabs button .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.conn { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
+.conn .led { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+.conn .led.ok { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.conn .led.bad { background: var(--red); }
+main { padding: 18px 20px 40px; max-width: 1680px; margin: 0 auto; }
+[hidden] { display: none !important; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; min-width: 0; }
+.panel h3 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600;
+  display: flex; align-items: center; gap: 8px; }
+.panel h3 .aside { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--faint); }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: var(--panel-2); border: 1px solid var(--line); white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.running { color: var(--green); background: var(--green-soft); border-color: transparent; }
+.pill.warn { color: var(--amber); background: var(--amber-soft); border-color: transparent; }
+.pill.bad { color: var(--red); background: var(--red-soft); border-color: transparent; }
+.pill.idle { color: var(--muted); }
+.muted { color: var(--muted); } .faint { color: var(--faint); } .mono { font-family: var(--mono); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.screen-wrap { position: relative; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 3 / 2; border: 1px solid var(--line); }
+.screen-wrap img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+.screen-wrap .overlay { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted);
+  background: radial-gradient(circle, #111a 0, #000c 100%); font-size: 13px; text-align: center; padding: 20px; }
+.screen-wrap .badge-scene { position: absolute; left: 10px; top: 10px; }
+.screen-wrap .age { position: absolute; right: 10px; bottom: 8px; font: 11px var(--mono); color: #fff9;
+  background: #0008; padding: 1px 6px; border-radius: 6px; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.kpi { background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .value { font: 600 18px/1.3 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .value small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.summary-card { display: flex; flex-direction: column; gap: 12px; }
+.summary-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.summary-head h2 { margin: 0; font-size: 20px; }
+.summary-head .gamebar { width: 6px; height: 26px; border-radius: 3px; }
+.summary-head button { margin-left: auto; }
+.btn { background: var(--panel-2); border: 1px solid var(--line); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn.danger { color: var(--red); }
+.btn:disabled { opacity: .5; cursor: default; }
+.objective { display: flex; flex-direction: column; gap: 6px; }
+.objective .mode { font-weight: 600; }
+.progress { height: 8px; background: var(--line-soft); border-radius: 99px; overflow: hidden; }
+.progress > div { height: 100%; background: linear-gradient(90deg, var(--blue), var(--violet)); border-radius: 99px; transition: width .4s; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.badge { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center;
+  font-size: 11px; font-weight: 700; color: var(--faint); }
+.badge.on { border-color: var(--amber); color: #111; background: radial-gradient(circle at 35% 35%, #fde68a, var(--amber)); }
+.team { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.mon { background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.mon .top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.mon .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mon .lvl { margin-left: auto; font: 600 12px var(--mono); color: var(--muted); }
+.mon .status { font: 700 10px var(--mono); padding: 0 5px; border-radius: 4px; background: var(--amber-soft); color: var(--amber); }
+.hp { height: 6px; background: var(--line-soft); border-radius: 99px; overflow: hidden; margin: 6px 0 2px; }
+.hp > div { height: 100%; border-radius: 99px; transition: width .3s; }
+.hp.xp { height: 3px; margin: 3px 0 0; } .hp.xp > div { background: var(--blue); }
+.mon .hpnum { font: 11px var(--mono); color: var(--muted); display: flex; justify-content: space-between; }
+.types { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.type { font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 4px; color: #fff; text-transform: uppercase; letter-spacing: .03em; }
+.moves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
+.move { font-size: 11px; background: var(--bg); border-radius: 6px; padding: 3px 6px; border-left: 3px solid var(--line);
+  display: flex; justify-content: space-between; gap: 4px; min-width: 0; }
+.move span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.move .pp { font-family: var(--mono); color: var(--muted); }
+.team.detail-team { grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); }
+.team.compact { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+.team.compact .mon { padding: 6px 8px; }
+.team.compact .name { font-size: 12.5px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; text-align: right; font-family: var(--mono); min-width: 0; overflow-wrap: anywhere; }
+.ladder { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 6px 0 10px; }
+.ladder div { font-size: 10px; text-align: center; padding: 5px 2px; border-radius: 6px; background: var(--panel-2);
+  border: 1px solid var(--line-soft); color: var(--faint); }
+.ladder div.done { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, transparent); background: var(--amber-soft); }
+.ladder div.now { color: var(--red); border-color: var(--red); background: var(--red-soft); }
+.detail { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.wide { grid-column: 1 / -1; }
+.charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
+.chart-box { position: relative; height: 210px; }
+.chart-box canvas { width: 100%; height: 100%; display: block; }
+.tooltip { position: absolute; pointer-events: none; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 8px; font: 11px var(--mono); white-space: nowrap; z-index: 3; box-shadow: 0 6px 18px #0006; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+td { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+tr:hover td { background: var(--panel-2); }
+.scroll { max-height: 380px; overflow: auto; }
+.risk { font-family: var(--mono); font-weight: 600; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.chip { border: 1px solid var(--line); background: transparent; padding: 3px 10px; border-radius: 999px; cursor: pointer; font-size: 12px; color: var(--muted); }
+.chip.active { color: var(--text); background: var(--panel-2); border-color: var(--muted); }
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { display: grid; grid-template-columns: 74px 10px 1fr auto; gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
+.timeline .when { font: 11px var(--mono); color: var(--faint); text-align: right; }
+.timeline .mark { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
+.timeline .what { min-width: 0; overflow-wrap: anywhere; }
+.timeline .frame { font: 11px var(--mono); color: var(--faint); }
+.milestones { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto; font-size: 12.5px; }
+.milestones li { display: flex; gap: 8px; padding: 3px 4px; border-radius: 6px; }
+.milestones li.done { color: var(--muted); }
+.milestones li.done::before { content: "✓"; color: var(--green); width: 14px; }
+.milestones li.next { background: var(--blue-soft); color: var(--text); font-weight: 600; }
+.milestones li.next::before { content: "▶"; color: var(--blue); width: 14px; }
+.milestones li.todo::before { content: "·"; color: var(--faint); width: 14px; text-align: center; }
+.battle { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; }
+.battle .side .name { font-weight: 700; }
+.battle .vs { font: 700 12px var(--mono); color: var(--faint); }
+.errorbox { border: 1px solid color-mix(in srgb, var(--red) 45%, transparent); background: var(--red-soft); color: var(--text);
+  border-radius: 8px; padding: 8px 10px; font: 12px var(--mono); overflow-wrap: anywhere; }
+.empty { color: var(--faint); font-size: 13px; padding: 10px 0; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin: -4px 0 6px; }
+.legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+@media (max-width: 1180px) { .detail { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 920px) { .grid-2 { grid-template-columns: minmax(0, 1fr); } .charts { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) {
+  main { padding: 12px 12px 30px; } .topbar { flex-wrap: wrap; padding: 8px 12px; } .conn { margin-left: 0; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">ARES <span>Estación de monitoreo</span></div>
+  <nav class="tabs" id="tabs">
+    <button data-view="overview" class="active">Resumen</button>
+    <button data-view="firered"><span class="dot" style="background:var(--fr)"></span>FireRed</button>
+    <button data-view="emerald"><span class="dot" style="background:var(--em)"></span>Emerald</button>
+    <button data-view="training">Entrenamiento</button>
+  </nav>
+  <div class="conn"><span class="led" id="led"></span><span id="conn-text">Conectando…</span><span class="num faint" id="clock"></span></div>
+</header>
+<main>
+  <section class="view grid-2" id="view-overview"></section>
+  <section class="view" id="view-firered" hidden></section>
+  <section class="view" id="view-emerald" hidden></section>
+  <section class="view" id="view-training" hidden></section>
+</main>
+<script>
+"use strict";
+const GAMES = ["firered", "emerald"];
+const TITLES = {firered: "Pokémon FireRed", emerald: "Pokémon Emerald"};
+const GAME_COLOR = {firered: "var(--fr)", emerald: "var(--em)"};
+const BADGES = {
+  firered: ["Roca", "Cascada", "Trueno", "Arcoíris", "Alma", "Pantano", "Volcán", "Tierra"],
+  emerald: ["Piedra", "Puño", "Dinamo", "Calor", "Equilibrio", "Pluma", "Mente", "Lluvia"],
+};
+const MODES = {
+  EXECUTE_MILESTONE: "Objetivo de historia", OPTIMAL_TRAINING_CURRICULUM: "Entrenamiento",
+  HEAL_POKECENTER: "Curación en Centro Pokémon", TEACH_FIELD_MOVE: "Enseñar movimiento de campo",
+  EXPLORE_DETOUR: "Desvío exploratorio", POSTGAME_COMPLETE: "Campaña completa", EXECUTE_PUZZLE: "Puzle",
+};
+const SCENES = {overworld: "Exploración", battle: "Combate", evolution: "Evolución", recovery_probe: "Sonda de recuperación",
+  bootstrap: "Inicio de partida"};
+const LIVENESS = {
+  running: ["En ejecución", "running"], restarting: ["Reiniciando", "warn"], unresponsive: ["Sin respuesta", "warn"],
+  dead: ["Proceso terminado", "bad"], stopped: ["Detenido", "idle"], absent: ["Sin datos", "idle"],
+};
+const TYPE_COLORS = {Normal: "#9ca3af", Fighting: "#c2410c", Flying: "#818cf8", Poison: "#a855f7", Ground: "#ca8a04",
+  Rock: "#a16207", Bug: "#84cc16", Ghost: "#6d28d9", Steel: "#64748b", Mystery: "#475569", Fire: "#f97316",
+  Water: "#3b82f6", Grass: "#22c55e", Electric: "#eab308", Psychic: "#ec4899", Ice: "#22d3ee", Dragon: "#7c3aed", Dark: "#44403c"};
+const EVENT_GROUPS = {
+  battle: ["battle_entered", "native_battle_result", "battle_decision", "move_no_effect_observed", "faint", "objective_defeat"],
+  story: ["milestone_observed", "map_transition", "team_plan", "route_committed", "field_move"],
+  team: ["evolution", "level_up", "moves_changed", "party_joined", "party_healed", "scene_started"],
+  recovery: ["stall_detected", "stall_recovery", "stall_rewind", "stall_rewind_failed", "transition_tabu",
+             "exploration_detour", "oscillation_detected", "campaign_blocked"],
+  system: ["agent_fault", "checkpoint", "checkpoint_restored", "native_callback"],
+  learning: ["passage_refused", "gate_requirement", "gate_relaxed", "strategy_shift", "shop_opened", "shop_closed",
+             "transition_tabu_lifted", "type_fact_learned", "counter_plan"],
+};
+const GROUP_COLOR = {battle: "var(--red)", story: "var(--blue)", team: "var(--green)", recovery: "var(--amber)",
+  system: "var(--violet)", learning: "#14b8a6"};
+const EVENT_LABELS = {
+  battle_decision: "Decisión de combate", battle_entered: "Inicio de combate", native_battle_result: "Resultado de combate",
+  checkpoint: "Partida guardada", campaign_blocked: "Ruta pendiente", milestone_observed: "Objetivo completado",
+  team_plan: "Equipo planificado", faint: "Pokémon debilitado", stall_detected: "Atasco detectado",
+  stall_recovery: "Recuperación", stall_rewind: "Retroceso a checkpoint", stall_rewind_failed: "Retroceso fallido",
+  agent_fault: "Fallo contenido", scene_started: "Escena", evolution: "Evolución", level_up: "Subida de nivel",
+  moves_changed: "Movimientos", party_joined: "Nuevo miembro", party_healed: "Equipo curado", route_committed: "Ruta fijada",
+  transition_tabu: "Salida vetada", exploration_detour: "Desvío exploratorio", oscillation_detected: "Oscilación detectada",
+  field_move: "Movimiento de campo", objective_defeat: "Derrota ante objetivo", map_transition: "Cambio de mapa",
+  checkpoint_restored: "Checkpoint cargado", native_callback: "Pantalla de inicio",
+  move_no_effect_observed: "Ataque sin efecto: cambiar de estrategia",
+  passage_refused: "Paso denegado: aprendido", gate_requirement: "Requisito de paso", gate_relaxed: "Verificando paso cerrado",
+  strategy_shift: "Cambio de estrategia", shop_opened: "Tienda abierta", shop_closed: "Compra terminada",
+  transition_tabu_lifted: "Vetos levantados", type_fact_learned: "Tabla de tipos: dato aprendido",
+  counter_plan: "Estrategia contra el jefe",
+};
+const TYPE_ES = {Normal: "Normal", Fighting: "Lucha", Flying: "Volador", Poison: "Veneno", Ground: "Tierra", Rock: "Roca",
+  Bug: "Bicho", Ghost: "Fantasma", Steel: "Acero", Fire: "Fuego", Water: "Agua", Grass: "Planta", Electric: "Eléctrico",
+  Psychic: "Psíquico", Ice: "Hielo", Dragon: "Dragón", Dark: "Siniestro"};
+const TYPE_ORDER = ["Normal", "Fighting", "Flying", "Poison", "Ground", "Rock", "Bug", "Ghost", "Steel", "Mystery", "Fire",
+  "Water", "Grass", "Electric", "Psychic", "Ice", "Dragon", "Dark"];
+const CATEGORY_ES = {super: "súper eficaz", resisted: "poco eficaz", neutral: "normal", no_effect: "sin efecto"};
+const MODE_ES = {EXECUTE_MILESTONE: "Ejecutar objetivo", OPTIMAL_TRAINING_CURRICULUM: "Entrenar", HEAL_POKECENTER: "Curar en Centro Pokémon",
+  SHOP: "Comprar en tienda", UNLOCK_GATE: "Cumplir un requisito de paso", TEACH_FIELD_MOVE: "Enseñar movimiento de campo",
+  EXPLORE_DETOUR: "Desvío", EXECUTE_PUZZLE: "Resolver puzle", POSTGAME_COMPLETE: "Campaña completa"};
+const STRATEGY_CHANGES = {attempt_with_current_team: "intentar el objetivo con el equipo actual",
+  forget_temporary_exit_bans: "olvidar vetos temporales de salidas"};
+const OUTCOMES = {1: "victoria", 2: "derrota", 3: "empate", 4: "huida", 5: "teletransporte", 6: "el rival huyó", 7: "captura", 9: "rendición"};
+
+const state = {view: "overview", overview: null, connected: false, filters: {firered: "all", emerald: "all"},
+  telemetry: {}, events: {}, decisions: {}, checkpoints: {}, charts: {}, training: null};
+
+const $ = (selector, root = document) => root.querySelector(selector);
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (key === "class") node.className = value;
+    else if (key === "style") node.setAttribute("style", value);
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value === true ? "" : value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+function put(node, ...children) {
+  node.append(...children.flat().filter(child => child !== null && child !== undefined && child !== false));
+  return node;
+}
+const REASONS = [
+  ["Useful offensive coverage and PP; attempt story objective", "Cobertura ofensiva útil y PP: intentar el objetivo"],
+  ["Usable offense and sufficient preparation; attempt story objective", "Ofensiva usable y preparación suficiente: intentar el objetivo"],
+  ["Prepare useful offense; reassess within a bounded training slice", "Preparar ofensiva útil; reevaluar tras un tramo de entrenamiento"],
+  ["Observed trainer defeat requires targeted preparation", "Una derrota observada exige preparación adicional"],
+  ["Story interaction; no level grinding", "Interacción de historia; sin entrenamiento"],
+  ["; training slice exhausted", " (tramo de entrenamiento agotado)"],
+  ["Strongest campaign Pokemon has low HP", "El Pokémon principal tiene pocos PS"],
+  ["Strongest campaign Pokemon is fainted", "El Pokémon principal está debilitado"],
+  ["Party has a persistent primary status condition", "El equipo tiene un estado alterado"],
+  ["Strongest campaign Pokemon has exhausted offensive PP", "El Pokémon principal agotó sus PP ofensivos"],
+  ["Strongest campaign Pokemon has exhausted move PP", "El Pokémon principal agotó sus PP"],
+  ["A healthy campaign Pokemon is required", "Se necesita un Pokémon sano"],
+  ["break a repeated state", "romper un estado repetido"],
+  ["Party health", "Salud del equipo"],
+  ["recurrent policy and expected damage burden until KO", "política recurrente y daño esperado hasta el KO"],
+  ["switch free-hit plus replacement damage burden until KO", "cambio: golpe libre más daño del reemplazo hasta el KO"],
+  ["engine-forced Struggle after PP exhaustion", "Combate forzado tras agotar los PP"],
+  ["fallback strongest legal attack", "respaldo: ataque legal más fuerte"],
+  ["forced replacement: first healthy reserve", "reemplazo forzado: primer reserva sano"],
+  ["Strategic deadline: attempt with the current preparation", "Plazo estratégico: intentar con la preparación actual"],
+  ["Strongest attacks nearly out of PP", "Los mejores ataques casi sin PP"],
+  ["Restore PP before", "Restaurar PP antes de"],
+  ["Restore HP before", "Restaurar PS antes de"],
+  ["Revive fainted team members before", "Revivir al equipo antes de"],
+  ["strongest member at", "miembro principal en"],
+  ["best attacks at", "mejores ataques al"],
+  ["use healing item", "usar objeto curativo"],
+  ["before the decisive exchange", "antes del intercambio decisivo"],
+  ["Buy healing items for", "Comprar curación para"],
+  ["Poke Balls", "Poké Balls"],
+  ["requires", "requiere"],
+  ["no gated route; attempting the closed passage to verify it", "sin ruta abierta; se verifica el paso cerrado"],
+];
+const PROOFS = {proved: "demostrada", unsupported: "no demostrable", counterexample: "contraejemplo", unknown: "desconocida"};
+const CHECKPOINT_REASONS = {periodic: "periódico", milestone: "hito", stall_recovery: "recuperación", requested: "solicitado",
+  interrupted: "interrumpido", frame_limit: "límite de fotogramas", error: "error", worker_start: "inicio", complete: "completada",
+  manual: "manual", recovery_probe: "prueba de recuperación", recovery_probe_error: "error de prueba"};
+function translateReason(text) {
+  let result = String(text || "");
+  for (const [english, spanish] of REASONS) result = result.replaceAll(english, spanish);
+  return result;
+}
+const fmt = new Intl.NumberFormat("es-CL");
+const num = value => (typeof value === "number" && isFinite(value)) ? fmt.format(Math.round(value)) : "—";
+const pct = value => (typeof value === "number" && isFinite(value)) ? `${Math.round(value * 100)}%` : "—";
+function ago(seconds) {
+  if (typeof seconds !== "number" || !isFinite(seconds)) return "—";
+  if (seconds < 1) return "ahora";
+  if (seconds < 60) return `${Math.round(seconds)} s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ${Math.floor(seconds % 3600 / 60)} min`;
+  return `${Math.floor(seconds / 86400)} d`;
+}
+function hpColor(ratio) { return ratio > 0.5 ? "var(--green)" : ratio > 0.2 ? "var(--amber)" : "var(--red)"; }
+function riskColor(risk) { return risk < 0.2 ? "var(--green)" : risk < 0.5 ? "var(--amber)" : "var(--red)"; }
+function groupOf(kind) { for (const [group, kinds] of Object.entries(EVENT_GROUPS)) if (kinds.includes(kind)) return group; return "system"; }
+
+async function getJSON(url) {
+  const response = await fetch(url, {cache: "no-store"});
+  if (!response.ok) throw new Error(`${response.status} ${url}`);
+  return response.json();
+}
+
+/* ---------- Charts: a compact canvas line chart with hover tooltips ---------- */
+class LineChart {
+  constructor(box) {
+    this.box = box; this.canvas = el("canvas"); this.tip = el("div", {class: "tooltip", hidden: true});
+    box.append(this.canvas, this.tip); this.series = []; this.hoverX = null;
+    this.canvas.addEventListener("mousemove", event => { this.hoverX = event.offsetX; this.draw(); });
+    this.canvas.addEventListener("mouseleave", () => { this.hoverX = null; this.tip.hidden = true; this.draw(); });
+    new ResizeObserver(() => this.draw()).observe(box);
+  }
+  set(series, options = {}) { this.series = series; this.options = options; this.draw(); }
+  draw() {
+    const ratio = window.devicePixelRatio || 1, width = this.box.clientWidth, height = this.box.clientHeight;
+    if (!width || !height) return;
+    this.canvas.width = width * ratio; this.canvas.height = height * ratio;
+    const ctx = this.canvas.getContext("2d"); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height);
+    const style = getComputedStyle(document.documentElement);
+    const muted = style.getPropertyValue("--faint").trim(), line = style.getPropertyValue("--line-soft").trim();
+    const points = this.series.flatMap(s => s.points);
+    const pad = {l: 46, r: 12, t: 8, b: 22};
+    if (points.length < 2) {
+      ctx.fillStyle = muted; ctx.font = "12px Segoe UI, sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("Sin datos suficientes todavía", width / 2, height / 2); this.tip.hidden = true; return;
+    }
+    let x0 = Math.min(...points.map(p => p[0])), x1 = Math.max(...points.map(p => p[0]));
+    let y0 = this.options.yMin ?? Math.min(...points.map(p => p[1])), y1 = Math.max(...points.map(p => p[1]));
+    if (x1 === x0) x1 = x0 + 1;
+    if (y1 === y0) { y1 = y0 + 1; }
+    const span = y1 - y0; y1 += span * 0.08; if (this.options.yMin === undefined) y0 -= span * 0.04;
+    const X = x => pad.l + (x - x0) / (x1 - x0) * (width - pad.l - pad.r);
+    const Y = y => height - pad.b - (y - y0) / (y1 - y0) * (height - pad.t - pad.b);
+    ctx.font = "11px Consolas, monospace"; ctx.fillStyle = muted; ctx.strokeStyle = line; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const value = y0 + (y1 - y0) * i / 4, y = Y(value);
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(width - pad.r, y); ctx.stroke();
+      ctx.textAlign = "right"; ctx.fillText(this.options.format ? this.options.format(value) : compact(value), pad.l - 6, y + 4);
+    }
+    ctx.textAlign = "center";
+    for (let i = 0; i <= 4; i++) {
+      const value = x0 + (x1 - x0) * i / 4;
+      ctx.fillText(new Date(value * 1000).toLocaleTimeString("es-CL", {hour: "2-digit", minute: "2-digit"}), X(value), height - 6);
+    }
+    for (const s of this.series) {
+      if (s.points.length < 1) continue;
+      ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.beginPath();
+      s.points.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1]))); ctx.stroke();
+    }
+    if (this.hoverX === null || this.hoverX < pad.l) { this.tip.hidden = true; return; }
+    const xv = x0 + (this.hoverX - pad.l) / (width - pad.l - pad.r) * (x1 - x0);
+    ctx.strokeStyle = muted; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(this.hoverX, pad.t); ctx.lineTo(this.hoverX, height - pad.b); ctx.stroke(); ctx.setLineDash([]);
+    const rows = [new Date(xv * 1000).toLocaleTimeString("es-CL")];
+    for (const s of this.series) {
+      if (!s.points.length) continue;
+      let best = s.points[0]; for (const p of s.points) if (Math.abs(p[0] - xv) < Math.abs(best[0] - xv)) best = p;
+      ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(X(best[0]), Y(best[1]), 3, 0, 7); ctx.fill();
+      rows.push(`${s.name}: ${this.options.format ? this.options.format(best[1]) : compact(best[1])}`);
+    }
+    this.tip.textContent = ""; rows.forEach((row, i) => this.tip.append(i ? el("div", {}, row) : el("div", {class: "faint"}, row)));
+    this.tip.hidden = false;
+    const left = Math.min(this.hoverX + 12, width - this.tip.offsetWidth - 4);
+    this.tip.style.left = `${Math.max(4, left)}px`; this.tip.style.top = "8px";
+  }
+}
+function compact(value) {
+  const abs = Math.abs(value);
+  if (abs >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (abs >= 1e4) return `${(value / 1e3).toFixed(0)}k`;
+  if (abs >= 100) return Math.round(value).toString();
+  return (Math.round(value * 10) / 10).toString();
+}
+const PALETTE = ["#60a5fa", "#4ade80", "#f472b6", "#fbbf24", "#a78bfa", "#22d3ee", "#f87171", "#fb923c"];
+
+/* ---------- Shared fragments ---------- */
+function livenessPill(entry) {
+  const key = entry?.liveness || "absent";
+  const [label, cls] = LIVENESS[key] || [key, "idle"];
+  return el("span", {class: `pill ${cls}`}, label);
+}
+function statusOf(game) { return state.overview?.games?.[game] || {}; }
+function telemetryOf(game) { return statusOf(game).telemetry || {}; }
+
+function monCard(mon, compactMode) {
+  const ratio = mon.maxHP ? mon.hp / mon.maxHP : 0;
+  const floor = mon.exp_level_floor, next = mon.exp_next_level;
+  const xp = (typeof floor === "number" && typeof next === "number" && next > floor) ? (mon.experience - floor) / (next - floor) : null;
+  const display = mon.nickname && mon.nickname !== mon.name ? `${mon.nickname}` : mon.name;
+  const card = el("div", {class: "mon", title: `${mon.name} · N${mon.level}`},
+    el("div", {class: "top"}, el("span", {class: "name"}, display || `#${mon.species}`),
+      mon.status ? el("span", {class: "status"}, mon.status) : null, el("span", {class: "lvl"}, `N${mon.level}`)),
+    el("div", {class: "hp"}, el("div", {style: `width:${Math.max(0, Math.min(100, ratio * 100))}%;background:${hpColor(ratio)}`})),
+    el("div", {class: "hpnum"}, el("span", {}, `${mon.hp}/${mon.maxHP} PS`), compactMode ? null : el("span", {}, xp !== null ? `EXP ${pct(xp)}` : "")));
+  if (!compactMode) {
+    if (xp !== null) card.append(el("div", {class: "hp xp"}, el("div", {style: `width:${Math.max(0, Math.min(100, xp * 100))}%`})));
+    if (mon.types?.length) card.append(el("div", {class: "types"}, mon.types.map(t => el("span", {class: "type", style: `background:${TYPE_COLORS[t] || "#555"}`}, t))));
+    if (mon.moves?.length) card.append(el("div", {class: "moves"}, mon.moves.map(move =>
+      el("div", {class: "move", style: `border-left-color:${TYPE_COLORS[move.type] || "var(--line)"}`,
+        title: `${move.name} · ${move.type || ""} · poder ${move.power ?? "?"} · precisión ${move.accuracy ?? "?"}`},
+        el("span", {}, move.name), el("span", {class: "pp"}, `${move.pp}/${move.max_pp ?? "?"}`)))));
+  }
+  return card;
+}
+function teamBlock(game, compactMode) {
+  const party = telemetryOf(game).party || statusOf(game).party;
+  if (!Array.isArray(party) || !party.length) return el("div", {class: "empty"}, "Esperando la lectura del equipo…");
+  return el("div", {class: `team ${compactMode ? "compact" : "detail-team"}`}, party.map(mon => monCard(mon, compactMode)));
+}
+function badgesBlock(game) {
+  const badges = telemetryOf(game).trainer?.badges || [];
+  return el("div", {class: "badges"}, BADGES[game].map((name, i) =>
+    el("div", {class: `badge ${badges[i] ? "on" : ""}`, title: `Medalla ${name}${badges[i] ? " · obtenida" : ""}`}, i + 1)));
+}
+function objectiveBlock(game) {
+  const status = statusOf(game), telemetry = telemetryOf(game), directive = status.directive || {};
+  const milestones = telemetry.milestones || {completed: status.metrics?.completed_milestones || [], total: 0};
+  const done = milestones.completed?.length || 0, total = milestones.total || 0;
+  const mode = MODES[directive.mode] || directive.mode || "Esperando directiva";
+  const target = directive.milestone || milestones.next || "";
+  const pos = status.position || {};
+  const extra = directive.mode === "OPTIMAL_TRAINING_CURRICULUM" && directive.target_level ? ` · nivel objetivo ${directive.target_level}` : "";
+  return el("div", {class: "objective"},
+    el("div", {}, el("span", {class: "mode"}, mode), target ? el("span", {class: "muted"}, ` → ${target}`) : null, el("span", {class: "faint"}, extra)),
+    el("div", {class: "muted"}, translateReason(directive.reason || directive.preparation_reason || "")),
+    el("div", {class: "progress", title: `${done} de ${total} hitos`}, el("div", {style: `width:${total ? done / total * 100 : 0}%`})),
+    el("div", {class: "faint"}, `${done} de ${total || "?"} hitos · ${telemetry.map_name || "mapa ?"} (${pos.map_group ?? "?"}:${pos.map_num ?? "?"}) · posición ${pos.x ?? "?"}, ${pos.y ?? "?"}`));
+}
+function kpiBlock(game) {
+  const status = statusOf(game), metrics = status.metrics || {}, trainer = telemetryOf(game).trainer || {};
+  const heartbeat = status.heartbeat || {};
+  const series = state.telemetry[game] || [];
+  const recent = series.filter(sample => typeof sample.fps === "number" && sample.fps > 0).pop();
+  const fps = recent && Date.now() / 1000 - recent.t < 60 ? recent.fps : null;
+  const kpi = (label, value, sub) => el("div", {class: "kpi"}, el("div", {class: "label"}, label), el("div", {class: "value"}, value, sub ? el("small", {}, ` ${sub}`) : null));
+  return el("div", {class: "kpis"},
+    kpi("Fotogramas", num(status.frames)), kpi("Velocidad", fps ? num(fps) : "—", "fps"),
+    kpi("Tiempo de juego", trainer.play_time || "—"), kpi("Latido", ago(heartbeat.age_seconds)),
+    kpi("Medallas", `${trainer.badge_count ?? 0}`, "/ 8"), kpi("Pokédex", num(trainer.dex_owned), `/ ${num(trainer.dex_seen)} vistos`),
+    kpi("Combates", num(metrics.battles), `${num(metrics.wins)} V · ${num(metrics.losses)} D`), kpi("Dinero", trainer.money != null ? `₽${num(trainer.money)}` : "—"));
+}
+function healthBlock(game) {
+  const status = statusOf(game), watchdog = status.progress_watchdog || {}, metrics = status.metrics || {};
+  const telemetry = telemetryOf(game);
+  const attempts = Math.max(watchdog.attempts || 0, watchdog.strategic_attempts || 0), rewinds = watchdog.rewinds || 0;
+  const steps = ["1 Replanificar", "2 Sondear", "3 Desviar", "4 Vetar", `Retroceder ${rewinds}/${watchdog.max_rewinds ?? 6}`];
+  const ladder = el("div", {class: "ladder"}, steps.map((label, i) => {
+    const level = i + 1, current = rewinds > 0 ? 5 : attempts;
+    return el("div", {class: level < current ? "done" : level === current ? "now" : ""}, label);
+  }));
+  const fault = status.faults?.last || telemetry.last_fault || {};
+  const recovery = watchdog.last_recovery || {};
+  const commitment = telemetry.route_commitment;
+  return el("div", {},
+    ladder,
+    el("dl", {class: "kv"},
+      el("dt", {}, "Escena"), el("dd", {}, SCENES[status.scene] || status.scene || "—"),
+      el("dt", {}, "Menú"), el("dd", {}, status.menu || telemetry.menu || "—"),
+      el("dt", {}, "Sin moverse"), el("dd", {}, `${num(watchdog.stationary_frames)} fot.`),
+      el("dt", {}, "Sin progreso"), el("dd", {}, `${num(watchdog.unproductive_frames)} fot.`),
+      el("dt", {}, "Sin avance de historia"), el("dd", {}, `${num(watchdog.strategic_unproductive_frames)} / ${num(watchdog.strategic_limit)} fot. · ${num(watchdog.strategic_attempts)} intentos`),
+      el("dt", {}, "Recuperaciones"), el("dd", {}, `${num(metrics.recoveries)} · sondas ${num(metrics.probes)} · desvíos ${num(metrics.detours)}`),
+      el("dt", {}, "Retrocesos"), el("dd", {}, num(metrics.rewinds)),
+      el("dt", {}, "Fallos contenidos"), el("dd", {}, num(metrics.faults)),
+      el("dt", {}, "Última acción"), el("dd", {}, recovery.actions ? `${recovery.actions.join(" + ")} (intento ${recovery.attempt})` : "—"),
+      el("dt", {}, "Ruta fijada"), el("dd", {}, commitment ? `salida ${commitment.exit.join(",")} → ${commitment.via.join(":")}` : "—"),
+      el("dt", {}, "Salidas vetadas"), el("dd", {}, num(telemetry.tabu_exits ?? 0))),
+    fault.error ? el("div", {class: "errorbox", style: "margin-top:10px"}, `Último fallo (fot. ${num(fault.frame)}, ${fault.where}): ${fault.error}`) : null,
+    status.recovery_blocked ? el("div", {class: "errorbox", style: "margin-top:10px"}, `Recuperación detenida: ${status.recovery_blocked}`) : null);
+}
+function learningBlock(game) {
+  const telemetry = telemetryOf(game), status = statusOf(game);
+  const barriers = telemetry.learned_barriers || [];
+  const preparation = telemetry.preparation || {};
+  const directive = status.directive || {};
+  const rows = [];
+  rows.push(el("dt", {}, "Estrategia"), el("dd", {}, translateReason(directive.preparation_reason || directive.reason || "—")));
+  if (telemetry.gate_relaxed) rows.push(el("dt", {}, "Paso en verificación"), el("dd", {}, telemetry.gate_relaxed));
+  for (const [objective, record] of Object.entries(preparation)) {
+    rows.push(el("dt", {}, `Lección ${objective}`),
+      el("dd", {}, `${record.defeats} derrota(s) · ${record.unprepared_defeats} sin curar · nivel objetivo ${record.retry_level || "—"}`));
+  }
+  const plan = telemetry.plan || {};
+  if (plan.objective) {
+    rows.unshift(el("dt", {}, "Objetivo"), el("dd", {}, `${plan.objective} · ${MODE_ES[plan.mode] || plan.mode || "—"}`));
+    if (plan.requirement) rows.push(el("dt", {}, "Requisito"), el("dd", {}, plan.requirement));
+    if (plan.training_route) rows.push(el("dt", {}, "Entrenamiento"), el("dd", {}, `${plan.training_route}${(plan.hunt || []).length ? ` · buscar ${plan.hunt.join(", ")}` : ""}`));
+    if ((plan.boss_roster || []).length) rows.push(el("dt", {}, "Equipo del jefe"), el("dd", {}, plan.boss_roster.map(m => `${m.name} N${m.level} (${(m.types || []).map(t => TYPE_ES[t] || t).join("/")})`).join(", ")));
+    if ((plan.counter_types || []).length) rows.push(el("dt", {}, "Contra él"), el("dd", {}, plan.counter_types.map(t => TYPE_ES[t] || t).join(", ")));
+    if ((plan.threat_types || []).length) rows.push(el("dt", {}, "Sus ataques"), el("dd", {}, plan.threat_types.map(t => TYPE_ES[t] || t).join(", ")));
+    if ((plan.catch_targets || []).length) rows.push(el("dt", {}, "Reclutar"), el("dd", {}, plan.catch_targets.join(", ")));
+    if (plan.stock) rows.push(el("dt", {}, "Mochila"), el("dd", {}, `curación ${num(plan.stock.healing_hp)} PS · ${num(plan.stock.balls)} Poké Balls`));
+  }
+  const chart = plan.type_chart;
+  const chartBlock = chart && chart.table ? typeChartBlock(chart) : null;
+  const list = barriers.length ? el("ul", {class: "milestones"}, barriers.map(barrier =>
+    el("li", {class: barrier.active ? "next" : "done"},
+      `${barrier.map} ${barrier.tile.join(",")} · ${barrier.requirement || "requisito desconocido"}${barrier.active ? " (evitado)" : " (reintentable)"}`)))
+    : el("div", {class: "empty"}, "Ningún paso denegado aprendido.");
+  return el("div", {}, el("dl", {class: "kv"}, rows), el("h4", {}, "Pasos denegados aprendidos"), list, chartBlock);
+}
+function typeChartBlock(chart) {
+  const colors = {0: "#111827", 0.5: "#b91c1c", 1: "#6b7280", 2: "#16a34a"};
+  const short = name => (TYPE_ES[name] || name).slice(0, 3);
+  const head = el("tr", {}, el("th", {}, "↓atq / def→"), chart.types.map(name => el("th", {title: TYPE_ES[name] || name}, short(name))));
+  const body = chart.table.map((row, i) => el("tr", {}, el("th", {title: TYPE_ES[chart.types[i]] || chart.types[i]}, short(chart.types[i])),
+    row.map((value, j) => el("td", {title: `${TYPE_ES[chart.types[i]]} → ${TYPE_ES[chart.types[j]]}: ${value === null ? "desconocido" : "×" + value}`,
+      style: `width:12px;height:12px;padding:0;background:${value === null ? "transparent" : colors[value]};border:1px solid var(--line, #3334)`}, ""))));
+  return el("div", {style: "margin-top:12px"},
+    el("h4", {}, `Tabla de tipos aprendida (${chart.known_cells} de 289 casillas · ${num(chart.observations)} observaciones)`),
+    el("div", {class: "scroll"}, el("table", {style: "border-collapse:collapse;font-size:10px"}, el("thead", {}, head), el("tbody", {}, body))),
+    el("div", {class: "faint", style: "margin-top:4px"}, "Verde ×2 · gris ×1 · rojo ×½ · negro ×0 · vacío: aún sin evidencia. Se aprende de los mensajes del combate y se comparte entre FireRed y Emerald."));
+}
+function battleBlock(game) {
+  const battle = telemetryOf(game).battle;
+  const decision = telemetryOf(game).last_decision;
+  if (!battle || !battle.own) return null;
+  const own = battle.own, enemy = battle.enemy || {};
+  const ownRatio = own.maxHP ? own.hp / own.maxHP : 0, enemyRatio = enemy.hp_fraction ?? 0;
+  return el("div", {class: "panel"},
+    el("h3", {}, battle.trainer ? "Combate contra entrenador" : "Combate salvaje"),
+    el("div", {class: "battle"},
+      el("div", {class: "side"}, el("div", {class: "name"}, `${own.name} N${own.level}`),
+        el("div", {class: "hp"}, el("div", {style: `width:${ownRatio * 100}%;background:${hpColor(ownRatio)}`})),
+        el("div", {class: "faint num"}, `${own.hp}/${own.maxHP} PS ${own.status || ""}`)),
+      el("div", {class: "vs"}, "VS"),
+      el("div", {class: "side"}, el("div", {class: "name"}, `${enemy.name || "?"} N${enemy.level ?? "?"}`),
+        el("div", {class: "hp"}, el("div", {style: `width:${enemyRatio * 100}%;background:${hpColor(enemyRatio)}`})),
+        el("div", {class: "faint num"}, `${pct(enemyRatio)} PS ${enemy.status || ""} · ${(enemy.types || []).join("/")}`))),
+    decision ? el("div", {class: "muted", style: "margin-top:10px"},
+      `Última decisión (turno ${decision.turn}): ${decision.move || decision.action} · riesgo `,
+      el("span", {class: "risk", style: `color:${riskColor(decision.risk)}`}, pct(decision.risk)),
+      decision.turns_to_ko ? ` · KO estimado en ${decision.turns_to_ko} turno(s)` : "") : null);
+}
+function refreshScreen(wrap, game) {
+  const pill = wrap.querySelector(".badge-scene");
+  const status = statusOf(game);
+  if (pill) pill.textContent = SCENES[status.scene] || status.scene || "—";
+  return wrap;
+}
+function screenBlock(game) {
+  const status = statusOf(game);
+  const wrap = el("div", {class: "screen-wrap"});
+  const img = el("img", {alt: `Pantalla en vivo de ${TITLES[game]}`, "data-frame": game});
+  const overlay = el("div", {class: "overlay"}, status.has_frame ? "Cargando imagen…" : "Esperando el emulador…");
+  img.addEventListener("load", () => { overlay.hidden = true; });
+  wrap.append(img, overlay, el("span", {class: "pill idle badge-scene"}, SCENES[status.scene] || status.scene || "—"),
+    el("span", {class: "age", "data-age": game}, ""));
+  return wrap;
+}
+
+/* ---------- Overview ---------- */
+function renderOverview() {
+  const root = $("#view-overview");
+  for (const game of GAMES) {
+    let card = root.querySelector(`[data-game="${game}"]`);
+    if (!card) {
+      card = el("div", {class: "panel summary-card", "data-game": game});
+      root.append(card);
+    }
+    const status = statusOf(game);
+    const keepScreen = card.querySelector(".screen-wrap");
+    card.textContent = "";
+    put(card, 
+      el("div", {class: "summary-head"}, el("span", {class: "gamebar", style: `background:${GAME_COLOR[game]}`}),
+        el("h2", {}, TITLES[game]), livenessPill(status),
+        el("button", {class: "btn", onclick: () => switchView(game)}, "Ver detalle")),
+      keepScreen ? refreshScreen(keepScreen, game) : screenBlock(game),
+      status.error ? el("div", {class: "errorbox"}, `Error: ${status.error}`) : null,
+      kpiBlock(game), objectiveBlock(game), badgesBlock(game), teamBlock(game, true),
+      el("div", {class: "panel", style: "background:var(--panel-2)"}, el("h3", {}, "Salud del agente"), healthBlock(game)));
+  }
+}
+
+/* ---------- Detail ---------- */
+function detailSkeleton(game) {
+  const root = $(`#view-${game}`);
+  if (root.dataset.built) return root;
+  root.dataset.built = "1";
+  const chartPanel = (key, title, legendId) => el("div", {class: "panel"}, el("h3", {}, title),
+    el("div", {class: "legend", id: `${game}-legend-${legendId}`}), el("div", {class: "chart-box", id: `${game}-chart-${key}`}));
+  root.append(el("div", {class: "detail"},
+    el("div", {class: "col"},
+      el("div", {class: "panel", id: `${game}-screen-panel`}),
+      el("div", {class: "panel", id: `${game}-objective`}),
+      el("div", {class: "panel", id: `${game}-health`}),
+      el("div", {class: "panel", id: `${game}-learning`}),
+      el("div", {class: "panel", id: `${game}-milestones`})),
+    el("div", {class: "col"},
+      el("div", {id: `${game}-battle`}),
+      el("div", {class: "panel", id: `${game}-team`}),
+      el("div", {class: "panel", id: `${game}-decisions`}),
+      el("div", {class: "panel", id: `${game}-events`})),
+    el("div", {class: "wide charts"},
+      chartPanel("levels", "Niveles del equipo", "levels"), chartPanel("combat", "Combate acumulado", "combat"),
+      chartPanel("story", "Progreso de historia", "story"), chartPanel("health", "Salud del agente", "health"),
+      chartPanel("speed", "Velocidad de emulación (fps)", "speed"), chartPanel("stuck", "Tiempo sin progreso (fotogramas)", "stuck")),
+    el("div", {class: "wide grid-2"},
+      el("div", {class: "panel", id: `${game}-checkpoints`}), el("div", {class: "panel", id: `${game}-supervisor`}))));
+  for (const key of ["levels", "combat", "story", "health", "speed", "stuck"]) state.charts[`${game}-${key}`] = new LineChart($(`#${game}-chart-${key}`));
+  return root;
+}
+async function control(game, action) {
+  if (action === "stop" && !confirm(`¿Guardar y detener ordenadamente ${TITLES[game]}?`)) return;
+  try {
+    const response = await fetch(`/api/control/${game}/${action}`, {method: "POST", headers: {"X-ARES-Control": "1"}});
+    if (!response.ok) throw new Error(await response.text());
+    toast(action === "stop" ? "Parada solicitada: el worker guardará y se detendrá." : "Guardado solicitado.");
+  } catch (error) { toast(`No se pudo enviar la solicitud: ${error.message}`); }
+}
+function toast(message) {
+  const node = el("div", {class: "panel", style: "position:fixed;right:20px;bottom:20px;z-index:9;max-width:360px;box-shadow:0 10px 30px #0008"}, message);
+  document.body.append(node); setTimeout(() => node.remove(), 4000);
+}
+function renderDetail(game) {
+  detailSkeleton(game);
+  const status = statusOf(game), telemetry = telemetryOf(game);
+  const screenPanel = $(`#${game}-screen-panel`);
+  const keepScreen = screenPanel.querySelector(".screen-wrap");
+  screenPanel.textContent = "";
+  put(screenPanel, 
+    el("div", {class: "summary-head", style: "margin-bottom:10px"}, el("span", {class: "gamebar", style: `background:${GAME_COLOR[game]}`}),
+      el("h2", {}, TITLES[game]), livenessPill(status)),
+    keepScreen ? refreshScreen(keepScreen, game) : screenBlock(game),
+    status.error ? el("div", {class: "errorbox", style: "margin-top:10px"}, `Error: ${status.error}`) : null,
+    el("div", {style: "margin-top:12px"}, kpiBlock(game)),
+    el("div", {style: "display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"},
+      el("button", {class: "btn", onclick: () => control(game, "checkpoint")}, "Guardar checkpoint ahora"),
+      el("button", {class: "btn danger", onclick: () => control(game, "stop")}, "Detener ordenadamente")));
+  const objective = $(`#${game}-objective`); objective.textContent = "";
+  put(objective, el("h3", {}, "Objetivo actual"), objectiveBlock(game), el("div", {style: "margin-top:10px"}, badgesBlock(game)));
+  const health = $(`#${game}-health`); health.textContent = "";
+  put(health, el("h3", {}, "Salud del agente", el("span", {class: "aside"}, "escalera de recuperación")), healthBlock(game));
+  const learning = $(`#${game}-learning`); learning.textContent = "";
+  put(learning, el("h3", {}, "Aprendizaje y estrategia", el("span", {class: "aside"}, "lecciones duraderas")), learningBlock(game));
+  const milestones = telemetry.milestones || {};
+  const order = milestones.order || [], completed = new Set(milestones.completed || []);
+  const list = el("ul", {class: "milestones"}, order.map(id => el("li", {class: completed.has(id) ? "done" : id === milestones.next ? "next" : "todo"}, id.replaceAll("_", " "))));
+  const msPanel = $(`#${game}-milestones`); msPanel.textContent = "";
+  put(msPanel, el("h3", {}, "Hitos de campaña", el("span", {class: "aside"}, `${completed.size} / ${order.length}`)),
+    order.length ? list : el("div", {class: "empty"}, "Sin datos de hitos todavía."));
+  requestAnimationFrame(() => list.querySelector(".next")?.scrollIntoView({block: "nearest"}));
+  const battleHolder = $(`#${game}-battle`); battleHolder.textContent = "";
+  const battle = battleBlock(game); if (battle) battleHolder.append(battle);
+  const team = $(`#${game}-team`); team.textContent = "";
+  put(team, el("h3", {}, "Equipo actual"), teamBlock(game, false));
+  renderSupervisor(game);
+}
+function renderDecisions(game) {
+  const panel = $(`#${game}-decisions`); if (!panel) return;
+  const rows = (state.decisions[game] || []).slice().reverse();
+  panel.textContent = "";
+  put(panel, el("h3", {}, "Decisiones de combate", el("span", {class: "aside"}, `últimas ${rows.length}`)));
+  if (!rows.length) { panel.append(el("div", {class: "empty"}, "Aún no hay decisiones registradas.")); return; }
+  const body = rows.map(event => {
+    const s = event.summary || {}, d = event.decision || {};
+    const risk = s.risk ?? d.estimated_risk;
+    const own = s.own ? `${s.own.name} N${s.own.level} (${s.own.hp}/${s.own.maxHP})` : "—";
+    const enemy = s.enemy ? `${s.enemy.name} N${s.enemy.level} (${pct(s.enemy.hp_fraction)})` : "—";
+    return el("tr", {},
+      el("td", {class: "num faint"}, num(event.frame)), el("td", {}, own), el("td", {}, enemy),
+      el("td", {}, el("strong", {}, s.move || d.action || "—"), el("div", {class: "faint"}, translateReason(s.reason || d.reason || "").slice(0, 80))),
+      el("td", {class: "risk", style: `color:${riskColor(risk ?? 1)}`}, pct(risk)),
+      el("td", {class: "num"}, s.turns_to_ko ?? d.expected_turns_to_ko ?? "—"),
+      el("td", {class: "faint"}, PROOFS[s.proof || d.proof?.proof_status] || s.proof || "—"));
+  });
+  put(panel, el("div", {class: "scroll"}, el("table", {},
+    el("thead", {}, el("tr", {}, ["Fot.", "Propio", "Rival", "Acción", "Riesgo", "KO", "Prueba"].map(h => el("th", {}, h)))),
+    el("tbody", {}, body))));
+}
+function eventText(event) {
+  const kind = event.kind;
+  switch (kind) {
+    case "native_battle_result": return `Resultado: ${OUTCOMES[event.outcome] || event.outcome}`;
+    case "battle_entered": return event.trainer ? "Combate contra entrenador" : "Combate salvaje";
+    case "milestone_observed": return `Objetivo completado: ${event.milestone}`;
+    case "evolution": return `Evolución: ${event.from_name} → ${event.to_name}`;
+    case "level_up": return `${event.name} sube a N${event.level}`;
+    case "moves_changed": return `${event.name}: aprende ${(event.learned || []).join(", ") || "—"}${(event.forgotten || []).length ? `, olvida ${event.forgotten.join(", ")}` : ""}`;
+    case "party_joined": return `Nuevo miembro: ${event.name} N${event.level}`;
+    case "stall_detected": return `Atasco detectado (${event.recovery?.reason || ""}, intento ${event.recovery?.attempt ?? "?"}) en ${event.mode}`;
+    case "stall_recovery": return `Recuperación ${event.attempt}: ${event.action}`;
+    case "stall_rewind": return `Retroceso a ${event.target?.split(/[\\/]/).pop()} (fot. ${num(event.from_frame)} → ${num(event.to_frame)})`;
+    case "agent_fault": return `Fallo contenido en ${event.where}: ${event.error}`;
+    case "campaign_blocked": return `Ruta pendiente: ${event.reason}${event.suppressed_repeats ? ` (×${event.suppressed_repeats + 1})` : ""}`;
+    case "map_transition": return `Mapa ${event.source?.join(":")} → ${event.destination?.join(":")}`;
+    case "route_committed": return `Ruta fijada: salida ${event.exit?.join(",")} hacia ${event.via?.join(":")}`;
+    case "transition_tabu": return `Salida vetada ${event.exit?.join(",")}: ${event.reason}`;
+    case "exploration_detour": return `Desvío a ${event.target?.join(",")}: ${event.reason}`;
+    case "checkpoint": return `Partida guardada (${CHECKPOINT_REASONS[event.reason] || event.reason})`;
+    case "scene_started": return `Escena: ${SCENES[event.scene] || event.scene}`;
+    case "battle_decision": return `Decisión: ${event.summary?.move || event.decision?.action}`;
+    case "faint": return `Pokémon debilitado (posición ${event.party_index + 1})`;
+    case "passage_refused": return `Paso denegado en ${event.map} ${event.tile?.join(",")}: requiere ${event.requirement} (aprendido, se evitará hasta cambiar el mundo)`;
+    case "gate_requirement": return `Antes de pasar hace falta ${event.requirement}: ir a ${event.target}`;
+    case "gate_relaxed": return `Sin ruta abierta: se verifica el paso cerrado (${event.reason})`;
+    case "strategy_shift": return `Cambio de estrategia: ${STRATEGY_CHANGES[event.change] || event.change}`;
+    case "objective_defeat": return `Derrota ante ${event.objective} (N${event.lead_level}) · ${event.prepared === false ? "entró sin curar: restaurar antes" : "preparado: subir nivel"}`;
+    case "shop_opened": return "Tienda abierta: compra planificada";
+    case "type_fact_learned": return `Aprendido: ${TYPE_ES[TYPE_ORDER[event.attack_type]] || event.attack_type} contra ${(event.defender_types || []).map(t => TYPE_ES[TYPE_ORDER[t]] || t).join("/")} es ${CATEGORY_ES[event.category] || event.category} (${event.origin === "opponent_move" ? "ataque rival" : "ataque propio"}; ${event.known_cells} casillas conocidas)`;
+    case "counter_plan": return `Estrategia para ${event.objective}: atacar con ${(event.counter_types || []).map(t => TYPE_ES[TYPE_ORDER[t]] || t).join(", ")}${(event.catch_targets || []).length ? `; capturar candidatos #${event.catch_targets.join(", #")}` : ""}`;
+    case "shop_closed": return `Compra terminada: ${Object.values(event.bought || {}).reduce((a, b) => a + b, 0)} objetos`;
+    default: return EVENT_LABELS[kind] || kind;
+  }
+}
+function renderEvents(game) {
+  const panel = $(`#${game}-events`); if (!panel) return;
+  const filter = state.filters[game];
+  const rows = (state.events[game] || []).filter(e => filter === "all" || groupOf(e.kind) === filter).slice(-120).reverse();
+  panel.textContent = "";
+  const names = {all: "Todo", battle: "Combate", story: "Historia", team: "Equipo", recovery: "Recuperación",
+    learning: "Aprendizaje", system: "Sistema"};
+  put(panel, el("h3", {}, "Línea de tiempo"),
+    el("div", {class: "chips"}, Object.entries(names).map(([key, label]) =>
+      el("button", {class: `chip ${filter === key ? "active" : ""}`, onclick: () => { state.filters[game] = key; renderEvents(game); }}, label))));
+  if (!rows.length) { panel.append(el("div", {class: "empty"}, "Sin eventos para este filtro.")); return; }
+  const now = Date.now() / 1000;
+  put(panel, el("div", {class: "scroll"}, el("ul", {class: "timeline"}, rows.map(event =>
+    el("li", {}, el("span", {class: "when"}, event.t ? ago(now - event.t) : ""),
+      el("span", {class: "mark", style: `background:${GROUP_COLOR[groupOf(event.kind)]}`}),
+      el("span", {class: "what"}, eventText(event)), el("span", {class: "frame"}, num(event.frame)))))));
+}
+function renderCheckpoints(game) {
+  const panel = $(`#${game}-checkpoints`); if (!panel) return;
+  const rows = state.checkpoints[game] || [];
+  panel.textContent = "";
+  put(panel, el("h3", {}, "Checkpoints", el("span", {class: "aside"}, `${rows.length} visibles`)));
+  if (!rows.length) { panel.append(el("div", {class: "empty"}, "Sin checkpoints.")); return; }
+  put(panel, el("div", {class: "scroll", style: "max-height:260px"}, el("table", {},
+    el("thead", {}, el("tr", {}, ["Fotograma", "Motivo", "Creado", "Tamaño"].map(h => el("th", {}, h)))),
+    el("tbody", {}, rows.map(row => el("tr", {},
+      el("td", {class: "num"}, num(row.frame)), el("td", {}, `${CHECKPOINT_REASONS[row.reason] || row.reason}${row.pinned ? " · fijado" : ""}`),
+      el("td", {class: "faint"}, new Date(row.created * 1000).toLocaleString("es-CL")),
+      el("td", {class: "num faint"}, `${(row.bytes / 1048576).toFixed(1)} MB`)))))));
+}
+function renderSupervisor(game) {
+  const panel = $(`#${game}-supervisor`); if (!panel) return;
+  const rows = (statusOf(game).supervisor || []).slice().reverse();
+  const labels = {worker_started: "Worker iniciado", worker_finished: "Worker terminó", worker_terminated: "Worker detenido",
+    worker_restart: "Reinicio programado", worker_exit_cleanup: "Cierre lento"};
+  panel.textContent = "";
+  put(panel, el("h3", {}, "Supervisor de procesos"));
+  if (!rows.length) { panel.append(el("div", {class: "empty"}, "Sin eventos del supervisor.")); return; }
+  const now = Date.now() / 1000;
+  put(panel, el("div", {class: "scroll", style: "max-height:260px"}, el("ul", {class: "timeline"}, rows.map(event =>
+    el("li", {}, el("span", {class: "when"}, ago(now - event.published_at)),
+      el("span", {class: "mark", style: `background:${event.kind === "worker_restart" || event.error ? "var(--amber)" : "var(--green)"}`}),
+      el("span", {class: "what"}, `${labels[event.kind] || event.kind}${event.error ? ` · ${event.error}` : ""}${event.backoff_seconds ? ` · espera ${event.backoff_seconds}s` : ""}`),
+      el("span", {class: "frame"}, event.pid ? `pid ${event.pid}` : ""))))));
+}
+function setLegend(game, key, series) {
+  const node = $(`#${game}-legend-${key}`); if (!node) return;
+  node.textContent = "";
+  series.forEach(s => node.append(el("span", {}, el("i", {style: `background:${s.color}`}), s.name)));
+}
+function renderCharts(game) {
+  const samples = state.telemetry[game] || [];
+  const chart = (key, series, options) => { state.charts[`${game}-${key}`]?.set(series, options); setLegend(game, key, series); };
+  const line = (name, color, pick) => ({name, color, points: samples.filter(s => typeof pick(s) === "number").map(s => [s.t, pick(s)])});
+  const bySpecies = new Map();
+  for (const sample of samples) for (const mon of sample.party || []) {
+    const [species, name, level] = mon; if (typeof level !== "number") continue;
+    const key = `${species}`; if (!bySpecies.has(key)) bySpecies.set(key, {name: name || `#${species}`, points: []});
+    bySpecies.get(key).points.push([sample.t, level]);
+  }
+  chart("levels", [...bySpecies.values()].slice(0, 8).map((s, i) => ({...s, color: PALETTE[i % PALETTE.length]})), {yMin: 0});
+  chart("combat", [line("Combates", PALETTE[0], s => s.battles), line("Victorias", PALETTE[1], s => s.wins),
+    line("Capturas", PALETTE[2], s => s.captures), line("Debilitados", PALETTE[6], s => s.faints)], {yMin: 0});
+  chart("story", [line("Hitos", PALETTE[4], s => s.milestones), line("Medallas", PALETTE[3], s => s.badge_count),
+    line("Pokédex", PALETTE[5], s => s.dex_owned)], {yMin: 0});
+  chart("health", [line("Recuperaciones", PALETTE[3], s => s.recoveries), line("Fallos", PALETTE[6], s => s.faults),
+    line("Retrocesos", PALETTE[4], s => s.rewinds)], {yMin: 0});
+  chart("speed", [line("fps", PALETTE[5], s => (typeof s.fps === "number" && s.fps > 0) ? s.fps : null)], {yMin: 0});
+  chart("stuck", [line("Sin progreso local", PALETTE[7], s => s.unproductive),
+    line("Sin avance de historia", PALETTE[6], s => s.story_unproductive)], {yMin: 0});
+}
+
+function renderTraining() {
+  const root = $("#view-training");
+  if (!root.dataset.built) {
+    root.dataset.built = "1";
+    root.append(el("div", {class: "panel", id: "training-status"}),
+      el("div", {class: "charts"}, ...[["vicreg", "H-JEPA · VICReg"], ["trajectory_balance", "GFlowNet · Trajectory Balance"],
+        ["win_rate", "PPO · victorias en evaluación"], ["value_loss", "PPO · pérdida de valor"]].map(([key, title]) =>
+        el("div", {class: "panel"}, el("h3", {}, title), el("div", {class: "chart-box", id: `training-${key}`})))));
+    for (const key of ["vicreg", "trajectory_balance", "win_rate", "value_loss"])
+      state.charts[`training-${key}`] = new LineChart($(`#training-${key}`));
+  }
+  const payload = state.training || {}, status = payload.status || {}, summary = payload.summary || {};
+  const panel = $("#training-status"); panel.textContent = "";
+  const stages = {initializing: "Preparando", collecting_data: "Recopilando transiciones", selecting_device: "Comprobando dispositivo",
+    world_and_team: "H-JEPA y GFlowNet", ppo_evaluation: "Evaluación PPO", ppo: "PPO recurrente", psro: "Liga PSRO",
+    saving: "Guardando pesos", completed: "Terminado", failed: "Falló", interrupted: "Interrumpido"};
+  const live = status.liveness === "running";
+  const updates = status.total_updates ? `${num(status.update)} / ${num(status.total_updates)} actualizaciones máximas` : "Sin sesión activa";
+  put(panel, el("h2", {}, "Entrenamiento neuronal"),
+    el("div", {}, stages[status.stage] || "Sin registro de sesión", " · ", live ? "En ejecución" : (status.liveness || "Sin proceso activo")),
+    el("div", {class: "muted"}, `${status.backend || summary.backend || "CPU / auto"} · ${updates}${status.ppo_cycle ? ` · ciclo PPO ${status.ppo_cycle}` : ""}`),
+    el("div", {class: "faint"}, "Las curvas pertenecen a la sesión indicada. La evaluación usa el laboratorio de combate; el avance de las ROMs se observa en las pestañas de cada juego. Las campañas cargan los pesos al arrancar."),
+    status.run_id ? el("div", {class: "num faint"}, `Sesión ${status.run_id} · última actualización ${ago(Date.now() / 1000 - (status.published_at || 0))}`) : null,
+    status.error ? el("div", {class: "errorbox"}, status.error) : null);
+  if (summary.vicreg || summary.ppo) {
+    const pair = value => value ? `${compact(value.initial)} → ${compact(value.final)}` : "—";
+    panel.append(el("dl", {class: "kv"}, el("dt", {}, "Último checkpoint · VICReg"), el("dd", {}, pair(summary.vicreg)),
+      el("dt", {}, "Trajectory Balance"), el("dd", {}, pair(summary.trajectory_balance)),
+      el("dt", {}, "PPO evaluado"), el("dd", {}, summary.ppo ? `${pct(summary.ppo.initial.win_rate)} → ${pct(summary.ppo.final.win_rate)}` : "—")));
+  }
+  const samples = payload.samples || [];
+  ["vicreg", "trajectory_balance", "win_rate", "value_loss"].forEach((key, index) => {
+    const points = samples.filter(s => typeof s[key] === "number" && Number.isFinite(s[key])).map(s => [s.t, s[key]]);
+    state.charts[`training-${key}`].set([{name: key === "win_rate" ? "Victorias" : key, color: PALETTE[index], points}],
+      key === "win_rate" ? {yMin: 0, format: pct} : {yMin: 0});
+  });
+}
+
+/* ---------- Data loops ---------- */
+function switchView(view) {
+  state.view = view;
+  for (const button of document.querySelectorAll("#tabs button")) button.classList.toggle("active", button.dataset.view === view);
+  for (const name of ["overview", ...GAMES, "training"]) $(`#view-${name}`).hidden = name !== view;
+  try { localStorage.setItem("ares-view", view); } catch (error) { /* storage may be blocked */ }
+  if (location.hash !== `#${view}`) history.replaceState(null, "", `#${view}`);
+  render(); refreshDetail(true);
+}
+function render() {
+  if (!state.overview) return;
+  if (state.view === "overview") renderOverview();
+  else if (state.view === "training") renderTraining();
+  else renderDetail(state.view);
+}
+async function refreshOverview() {
+  try {
+    state.overview = await getJSON("/api/overview");
+    state.connected = true;
+    $("#led").className = "led ok"; $("#conn-text").textContent = "Conectado";
+    render();
+  } catch (error) {
+    state.connected = false; $("#led").className = "led bad"; $("#conn-text").textContent = "Sin conexión con el servidor";
+  }
+}
+let lastDetail = 0, lastCharts = 0, lastCheckpoints = 0;
+async function refreshDetail(force = false) {
+  if (state.view === "training") {
+    try { state.training = await getJSON("/api/training"); renderTraining(); } catch (error) { /* overview reports network health */ }
+    return;
+  }
+  const games = state.view === "overview" ? GAMES : [state.view];
+  const now = Date.now();
+  try {
+    if (force || now - lastCharts > 5000) {
+      lastCharts = now;
+      for (const game of games) state.telemetry[game] = await getJSON(`/api/telemetry/${game}?limit=900`);
+      if (state.view !== "overview") renderCharts(state.view);
+    }
+    if (state.view === "overview") return;
+    const game = state.view;
+    if (force || now - lastDetail > 2000) {
+      lastDetail = now;
+      state.events[game] = await getJSON(`/api/events/${game}?limit=400`);
+      state.decisions[game] = await getJSON(`/api/events/${game}?kinds=battle_decision&limit=40`);
+      renderEvents(game); renderDecisions(game);
+    }
+    if (force || now - lastCheckpoints > 15000) {
+      lastCheckpoints = now;
+      state.checkpoints[game] = await getJSON(`/api/checkpoints/${game}`);
+      renderCheckpoints(game);
+    }
+  } catch (error) { /* the overview loop reports connectivity */ }
+}
+const frameBusy = {};
+function refreshFrames() {
+  for (const img of document.querySelectorAll("img[data-frame]")) {
+    if (img.offsetParent === null) continue;
+    const game = img.dataset.frame;
+    if (frameBusy[game]) continue;
+    frameBusy[game] = true;
+    const next = new Image();
+    next.onload = () => { img.src = next.src; frameBusy[game] = false; };
+    next.onerror = () => { frameBusy[game] = false; };
+    next.src = `/api/frame/${game}.png?ts=${Date.now()}`;
+  }
+  for (const node of document.querySelectorAll("[data-age]")) {
+    const published = statusOf(node.dataset.age).published_at;
+    node.textContent = typeof published === "number" ? `hace ${ago(Date.now() / 1000 - published)}` : "";
+  }
+  $("#clock").textContent = new Date().toLocaleTimeString("es-CL");
+}
+
+document.querySelectorAll("#tabs button").forEach(button => button.addEventListener("click", () => switchView(button.dataset.view)));
+let initial = location.hash.slice(1);
+if (!initial) {
+  try { initial = localStorage.getItem("ares-view") || "overview"; } catch (error) { initial = "overview"; }
+}
+if (!["overview", ...GAMES, "training"].includes(initial)) initial = "overview";
+refreshOverview().then(() => switchView(initial));
+setInterval(refreshOverview, 1000);
+setInterval(() => refreshDetail(false), 1000);
+setInterval(refreshFrames, 250);
+</script>
+</body>
+</html>

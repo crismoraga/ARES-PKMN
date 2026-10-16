@@ -99,11 +99,17 @@ class MoveInfo:
     flags: int
 
     @property
+    def is_special(self) -> bool:
+        """Return whether this move's Gen-3 type uses special attack/defense."""
+        return self.move_type >= 10
+
+    @property
     def category(self) -> Literal["physical", "special", "status"]:
         """Return pre-generation-four category without later-generation rules."""
         if self.power == 0:
             return "status"
         return "special" if self.move_type >= 10 else "physical"
+
 
 
 class RomCatalog:
@@ -146,6 +152,23 @@ class RomCatalog:
         name = decode_gba_text(self.read(self.symbols["gMoveNames"].address + 13 * move_id, 13))
         return MoveInfo(move_id, name, data[0], data[1], data[2], data[3], data[4], data[5],
                         data[6], int.from_bytes(data[7:8], "little", signed=True), data[8])
+
+    @lru_cache(maxsize=512)
+    def item_price(self, item_id: int) -> int:
+        """Mart price from the 44-byte gItems record (name[14], id, price, ...)."""
+        symbol = self.symbols.get("gItems")
+        if symbol is None or not 0 < item_id < symbol.size // 44:
+            raise ValueError(f"Invalid item id {item_id}")
+        record = self.read(symbol.address + 44 * item_id, 44)
+        return int(struct.unpack_from("<H", record, 0x10)[0])
+
+    @lru_cache(maxsize=512)
+    def item_pocket(self, item_id: int) -> int:
+        """Native bag pocket number (1-based POCKET_* constant) of an item."""
+        symbol = self.symbols.get("gItems")
+        if symbol is None or not 0 < item_id < symbol.size // 44:
+            raise ValueError(f"Invalid item id {item_id}")
+        return int(self.read(symbol.address + 44 * item_id + 0x1A, 1)[0])
 
     def experience_at_level(self, species_id: int, level: int) -> int:
         """Use the ROM experience table, including non-cubic growth curves."""

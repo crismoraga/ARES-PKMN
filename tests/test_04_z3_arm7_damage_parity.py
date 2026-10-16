@@ -417,3 +417,24 @@ def test_symbolic_model_uses_only_integer_sorts() -> None:
     assert re.search(r"\bz3\.Real(?:Val)?\(", source) is None
     assert verifier.verify_worst_case_survival(1000, 100, 50, 100, 80, 1, 1)[0]
     assert all(symbol.sort().kind() == z3.Z3_INT_SORT for symbol in verifier._basic_symbols)
+
+
+def test_gen3_type_category_split() -> None:
+    # Physical types (0..8) and reserve 9
+    for move_type in range(10):
+        ctx = DamageContext(10, 20, 40, 40, move_type=move_type, category="physical")
+        assert ctx.selected_category == "physical"
+        with pytest.raises(ValueError, match="category must follow the Gen-3 type category split"):
+            DamageContext(10, 20, 40, 40, move_type=move_type, category="special")
+
+    # Special types (10..17, e.g. Grass=12, Fire=10, Water=11)
+    for move_type in range(10, 18):
+        ctx = DamageContext(10, 20, 40, 40, move_type=move_type, category="special")
+        assert ctx.selected_category == "special"
+        with pytest.raises(ValueError, match="category must follow the Gen-3 type category split"):
+            DamageContext(10, 20, 40, 40, move_type=move_type, category="physical")
+
+    # Status moves with power 0 and special type (like Leech Seed move_type=12)
+    leech_seed_ctx = DamageContext(7, 15, 15, 0, move_type=12, category="special")
+    assert leech_seed_ctx.selected_category == "special"
+

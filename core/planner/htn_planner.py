@@ -11,16 +11,18 @@ import json
 import math
 import re
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
 from core.bridge.ffi_mgba import GBABridgeProtocol
-from core.game_data import Game, RomCatalog
+from core.game_data import Game, ROM_NAMES, RomCatalog
 from core.navigation.source_data import ROOT, MapKey, SourceMapCatalog, load_map_catalog
 from core.navigation.constrained_astar import GbaConstrainedAStar, Matrix
 from core.navigation.puzzles import plan_sootopolis_ice_commands, plan_strength_commands
 from core.navigation.warp_topology import HierarchicalWarpGraph
+from core.planner.readiness import LOW_PP_FRACTION, CampaignPreparationPolicy, best_attack_pp
+from core.shopping import read_money, shopping_need
 
 
 @dataclass(frozen=True)
@@ -89,7 +91,7 @@ class _CampaignBuilder:
              types: tuple[int, ...] = (), dependencies: tuple[str, ...] | None = None,
              variable: tuple[str, int] | None = None, item: str = "",
              moves: tuple[int, ...] = (), puzzle: str = "", action: str | None = None,
-             choice: int = 0, trainer: str = "") -> None:
+             choice: int = 0, trainer: str = "", party_species: int = 0) -> None:
         catalog = self.catalog
         candidates = [target for target in catalog.targets(map_name)
                       if re.search(pattern, str(target["script"]), re.IGNORECASE)]
@@ -114,6 +116,8 @@ class _CampaignBuilder:
             conditions.append(CompletionPredicate("var_at_least", catalog.constants[variable[0]], variable[1]))
         if item:
             conditions.append(CompletionPredicate("item", catalog.constants[item]))
+        if party_species:
+            conditions.append(CompletionPredicate("party_species", party_species))
         flag_id = catalog.constants[flag] if flag else -1
         if trainer:
             flag_id = catalog.constants["TRAINER_FLAGS_START"] + catalog.constants[trainer]
@@ -163,6 +167,7 @@ def _firered_campaign() -> list[CampaignMilestone]:
     t("SILPH_CARD_KEY", "SilphCo_5F", "CardKey", "FLAG_HIDE_SILPH_CO_5F_CARD_KEY", 43)
     t("SILPH_GIOVANNI", "SilphCo_11F", "GiovanniTriggerLeft", "FLAG_HIDE_SAFFRON_ROCKETS", 45, puzzle="silph_teleporters")
     t("SILPH_CO", "SilphCo_11F", "President$", "FLAG_GOT_MASTER_BALL_FROM_SILPH")
+    t("LAPRAS_GIFT", "SilphCo_7F", "LaprasGuy$", "FLAG_GOT_LAPRAS_FROM_SILPH", party_species=131)
     t("GYM_6_SABRINA", "SaffronCity_Gym", "Sabrina$", "FLAG_BADGE06_GET", 46, (6, 7, 17), puzzle="saffron_teleporters")
     t("MANSION_SECRET_KEY", "PokemonMansion_B1F", "SecretKey", "FLAG_HIDE_POKEMON_MANSION_B1F_SECRET_KEY", 47, moves=(57,), puzzle="mansion_statues")
     t("GYM_7_BLAINE", "CinnabarIsland_Gym", "Blaine$", "FLAG_BADGE07_GET", 49, (11, 4, 5), puzzle="cinnabar_quizzes")
@@ -257,6 +262,18 @@ class HTNCampaignPlanner:
         self.graph = graph or (HierarchicalWarpGraph() if self.custom_campaign else HierarchicalWarpGraph.from_source(self.game))
         self.maps = self.catalog.maps if self.catalog else {}
         self._rom_catalog: RomCatalog | None = None
+        self.preparation = CampaignPreparationPolicy()
+        # Shopping: the orchestrator sets a cooldown after each Mart visit so an
+        # unaffordable list cannot trap the agent at the counter.
+        self.shop_cooldown_until = 0
+        self.wants_balls = True
+        self._restoring_for = ""
+        # Learned from defeats: attack types that counter an objective's roster
+        # and catchable species carrying them (set by the orchestrator).
+        self.learned_counters: dict[str, list[int]] = {}
+        self.counter_targets: dict[str, list[int]] = {}
+        self._last_completed: frozenset[str] = frozenset()
+        self._mart_targets: list[dict[str, Any]] | None = None
         self._validate_dag()
 
     @property
@@ -293,12 +310,29 @@ class HTNCampaignPlanner:
             nurse = [target for target in self.catalog.targets(str(raw["name"])) if "Nurse" in str(target["script"])]
             if not nurse:
                 continue
-            route = self.graph.find_route(current, key, completed, (coords["x"], coords["y"]))
+            # Rank the whole hospital list using cheap topology, then validate
+            # nearby alternatives. An unreachable Sevii hospital must never
+            # freeze the policy while it exhausts every tile on the mainland.
+            route = self.graph.find_route(current, key, completed, (coords["x"], coords["y"]),
+                                          bridge, validate_local=False)
             if route is not None:
-                candidates.append((sum(edge.cost for edge in route), nurse[0]))
-        if candidates:
-            target = min(candidates, key=lambda value: value[0])[1]
-            result.update(dest=(target["map_group"], target["map_num"], (target["x"], target["y"])),
+                walk = self.graph.estimate_route_cost(route, (coords["x"], coords["y"]))
+                entry = route[-1].destination_xy if route else (coords["x"], coords["y"])
+                walk += abs(int(nurse[0]["x"]) - entry[0]) + abs(int(nurse[0]["y"]) - entry[1])
+                candidates.append((walk, nurse[0]))
+        ranked = sorted(candidates, key=lambda value: value[0])
+        for _, target in ranked[:8]:
+            target_key = int(target["map_group"]), int(target["map_num"])
+            route = self.graph.find_route(current, target_key, completed, (coords["x"], coords["y"]), bridge)
+            if route is not None:
+                result.update(dest=(*target_key, (target["x"], target["y"])),
+                              script=target["script"], npc_local_id=target["npc_local_id"])
+                break
+        if "dest" not in result and ranked:
+            # Live validation can fail transiently (warp frames); the nearest
+            # topologically reachable nurse is still the right destination.
+            target = ranked[0][1]
+            result.update(dest=(int(target["map_group"]), int(target["map_num"]), (target["x"], target["y"])),
                           script=target["script"], npc_local_id=target["npc_local_id"])
         return result
 
@@ -314,6 +348,10 @@ class HTNCampaignPlanner:
         candidates: list[tuple[float, MapKey, tuple[int, int]]] = []
         for key, raw in self.catalog.maps.items():
             if raw["map_type"] not in ("MAP_TYPE_ROUTE", "MAP_TYPE_TOWN", "MAP_TYPE_CITY"):
+                continue
+            # Safari encounters cannot award battle XP. Grass attributes alone
+            # also appear on decorative maps with no land encounter table.
+            if str(raw["name"]).startswith("SafariZone") or str(raw["id"]) not in self.catalog.land_encounters:
                 continue
             if key != current and any(name not in completed for name in self.training_map_prerequisites(str(raw["name"]))):
                 continue
@@ -336,7 +374,7 @@ class HTNCampaignPlanner:
                     continue
                 candidates.append((0, key, point))
                 continue
-            route = self.graph.find_route(current, key, completed, (coords["x"], coords["y"]))
+            route = self.graph.find_route(current, key, completed, (coords["x"], coords["y"]), bridge)
             if route is not None:
                 entry = route[-1].destination_xy if route else (coords["x"], coords["y"])
                 source_planner = GbaConstrainedAStar(cast(Matrix, (packed >> 10) & 3), cast(Matrix, packed >> 12),
@@ -348,11 +386,21 @@ class HTNCampaignPlanner:
                 point = next((xy for xy in grass if source_planner.find_optimal_path(origin, xy) is not None), None)
                 if point is None:
                     continue
-                cost = sum(edge.cost for edge in route) + abs(point[0] - entry[0]) + abs(point[1] - entry[1])
+                cost = self.graph.estimate_route_cost(route, (coords["x"], coords["y"])) + abs(point[0] - entry[0]) + abs(point[1] - entry[1])
                 candidates.append((cost + len(route), key, point))
         if candidates:
             _, key, point = min(candidates, key=lambda entry: entry[0])
             result.update(dest=(*key, point), action="train", training_route=self.catalog.maps[key]["name"])
+            targets = set(self.counter_targets.get(task.milestone_id, ()))
+            if targets and self.wants_balls:
+                # Strategy learned from a defeat: train where a counter-type
+                # Pokemon lives, so the capture policy can recruit it.
+                hunting = [entry for entry in candidates if targets & self._land_species(entry[1])]
+                if hunting:
+                    _, key, point = min(hunting, key=lambda entry: entry[0])
+                    result.update(dest=(*key, point), training_route=self.catalog.maps[key]["name"],
+                                  hunt_species=sorted(targets & self._land_species(key)), fixed_route=True,
+                                  training_reason="recruit a counter-type Pokemon for " + task.milestone_id)
             if self._rom_catalog is None:
                 self._rom_catalog = RomCatalog(cast(Game, self.game))
             choices: list[dict[str, Any]] = []
@@ -382,6 +430,30 @@ class HTNCampaignPlanner:
             result["training_candidates"] = choices
         return result
 
+    def _land_species(self, key: MapKey) -> frozenset[int]:
+        if self.catalog is None:
+            return frozenset()
+        raw = self.catalog.maps.get(key)
+        land = self.catalog.land_encounters.get(str(raw["id"])) if raw is not None else None
+        if land is None:
+            return frozenset()
+        constants = self.catalog.constants
+        return frozenset(int(constants[str(mon["species"])]) for mon in land["mons"] if str(mon["species"]) in constants)
+
+    def catchable_species(self) -> list[int]:
+        """Species of land encounter tables on maps the story already opens."""
+        if self.catalog is None:
+            return []
+        found: set[int] = set()
+        for key, raw in self.catalog.maps.items():
+            name = str(raw["name"])
+            if name.startswith("SafariZone") or str(raw["id"]) not in self.catalog.land_encounters:
+                continue
+            if any(prerequisite not in self._last_completed for prerequisite in self.training_map_prerequisites(name)):
+                continue
+            found |= self._land_species(key)
+        return sorted(found)
+
     def training_map_prerequisites(self, map_name: str) -> tuple[str, ...]:
         """Story gates for source training routes, separate from geometric reach.
 
@@ -391,6 +463,20 @@ class HTNCampaignPlanner:
         """
         match = re.match(r"Route(\d+)(?:_|$)", map_name)
         if match is None:
+            if self.game == "firered" and map_name == "ViridianForest":
+                return ("OAK_PARCEL",)
+            # Sevii routes are named after islands rather than RouteN. They
+            # must not trigger full-world unreachable searches before Brock.
+            if self.game == "firered" and ("Island" in map_name or map_name.startswith("MtEmber")):
+                return ("ELITE_FOUR",)
+            if self.game == "emerald" and map_name == "PetalburgWoods":
+                return ("WALLY_TUTORIAL",)
+            if self.game == "emerald" and map_name == "JaggedPass":
+                return ("MT_CHIMNEY",)
+            if self.game == "emerald" and map_name.startswith("MtPyre"):
+                return ("GYM_5_NORMAN", "HM_SURF")
+            if map_name.startswith("SafariZone"):
+                return ("ELITE_FOUR",)
             return ()
         route = int(match[1])
         if self.game == "firered":
@@ -413,8 +499,10 @@ class HTNCampaignPlanner:
             return ("ELITE_FOUR",)
         if route in (101, 102, 103):
             return ()
-        if route in (104, 116):
+        if route == 104:
             return ("WALLY_TUTORIAL",)
+        if route == 116:
+            return ("PETALBURG_WOODS_AQUA",)
         if route in (110, 117):
             return ("STERN_GOODS",)
         if route in (111, 112, 113, 114, 115):
@@ -496,30 +584,218 @@ class HTNCampaignPlanner:
                 return self.catalog.find_target("VermilionCity_Gym", rf"TrashCan{switch}$")
         return None
 
+    def _healing_reason(self, bridge: GBABridgeProtocol, party: list[dict[str, Any]]) -> str | None:
+        """Battle readiness depends on the lead's condition, not summed HP alone."""
+        if not party:
+            return None
+        hp = sum(int(mon["hp"]) for mon in party)
+        maximum = max(1, sum(int(mon["maxHP"]) for mon in party))
+        if hp / maximum < 0.4:
+            return f"Party health {hp}/{maximum}"
+        strongest = max(party, key=lambda mon: (int(mon["level"]), int(mon["maxHP"])))
+        if int(strongest["hp"]) <= 0:
+            return "Strongest campaign Pokemon is fainted"
+        if int(strongest["hp"]) / max(1, int(strongest["maxHP"])) < 0.4:
+            return "Strongest campaign Pokemon has low HP"
+        if any(int(mon.get("status", 0)) & 0xFF for mon in party if int(mon["hp"]) > 0):
+            return "Party has a persistent primary status condition"
+        moves = [int(move) for move in strongest.get("moves", [])]
+        pp = [int(value) for value in strongest.get("pp", [])]
+        if moves and not any(pp):
+            return "Strongest campaign Pokemon has exhausted move PP"
+        if not isinstance(getattr(bridge, "moves", None), dict):
+            try:
+                fraction, attacks = best_attack_pp(strongest, self.move_info,
+                                                   self.species_types(int(strongest["species"])))
+            except (ValueError, KeyError, IndexError, OSError):
+                fraction, attacks = 1.0, 0
+            if attacks and fraction <= LOW_PP_FRACTION:
+                # Grinding or fighting with Tackle while Mud Shot is empty
+                # wastes battles and loses boss fights: restore first.
+                return f"Strongest attacks nearly out of PP ({round(100 * fraction)}%)"
+        known_offense: list[int] = []
+        declared_moves = getattr(bridge, "moves", None)
+        if self._rom_catalog is None and not isinstance(declared_moves, dict):
+            rom = ROOT.parent / ROM_NAMES[cast(Game, self.game)]
+            if rom.is_file():
+                self._rom_catalog = RomCatalog(cast(Game, self.game), rom)
+        for index, move in enumerate(moves):
+            if not move:
+                continue
+            if isinstance(declared_moves, dict):
+                metadata = declared_moves.get(move)
+                power = int(getattr(metadata, "power", 0))
+            elif self._rom_catalog is not None:
+                power = self._rom_catalog.move(move).power
+            else:
+                continue
+            if power > 0:
+                known_offense.append(pp[index] if index < len(pp) else 0)
+        if known_offense and not any(known_offense):
+            return "Strongest campaign Pokemon has exhausted offensive PP"
+        return None
+
+    def _rom(self) -> RomCatalog:
+        if self._rom_catalog is None:
+            self._rom_catalog = RomCatalog(cast(Game, self.game))
+        return self._rom_catalog
+
+    def move_info(self, move: int) -> tuple[int, int, int]:
+        info = self._rom().move(move)
+        return info.move_type, info.power, info.pp
+
+    def species_types(self, species: int) -> tuple[int, ...]:
+        catalog = self._rom()
+        if not 0 < species < catalog.species_count:
+            return ()
+        return tuple(catalog.species(species).types)
+
+    def _near(self, bridge: GBABridgeProtocol, target: MapKey, completed: frozenset[str], hops: int = 2) -> bool:
+        """Within a couple of transitions of the boss's map (its town, its building).
+
+        Restoring far away (Viridian before Viridian Forest) only spends the
+        heal on the wild battles of the way; the boss's own town has a center.
+        """
+        coords = bridge.get_player_coords_and_map()
+        current = coords["map_group"], coords["map_num"]
+        if current == target:
+            return True
+        # Walking-validated: Route 2's south half is not "next to" Pewter City
+        # just because the map graph connects its north edge to it.
+        route = self.graph.find_route(current, target, completed, (coords["x"], coords["y"]), bridge)
+        return route is not None and len(route) <= hops
+
+    @staticmethod
+    def is_battle_task(task: CampaignMilestone) -> bool:
+        """Gym leaders, rivals, trainers, admins and the League: fights worth preparing."""
+        name = task.flag_name or ""
+        return (name.startswith("FLAG_BADGE") or "TRAINER_FLAGS_START" in name or "DEFEATED" in name or
+                bool(task.required_types) or "RIVAL" in task.milestone_id or
+                task.milestone_id.startswith(("GYM_", "ELITE_", "CHAMPION")))
+
+    def _mart_clerks(self) -> list[dict[str, Any]]:
+        if self._mart_targets is None:
+            found: list[dict[str, Any]] = []
+            if self.catalog is not None:
+                for raw in self.catalog.maps.values():
+                    name = str(raw["name"])
+                    if not (name.endswith("_Mart") or name.endswith("DepartmentStore_2F")):
+                        continue
+                    found.extend(target for target in self.catalog.targets(name)
+                                 if target["action"] == "interact" and "Clerk" in str(target["script"]))
+            self._mart_targets = found
+        return self._mart_targets
+
+    def shopping_directive(self, bridge: GBABridgeProtocol, party: list[dict[str, Any]],
+                           completed: frozenset[str]) -> dict[str, Any] | None:
+        """A nearby Mart visit when the bag lacks healing items or balls and money allows."""
+        if self.catalog is None or self.custom_campaign or not party or bridge.is_in_battle()[0]:
+            return None
+        if bridge.frame_count < self.shop_cooldown_until or len(completed) < 6:
+            return None  # early story clerks (Oak's Parcel) must not be mistaken for shops
+        constants = self.catalog.constants
+        try:
+            inventory = dict(bridge.get_inventory())
+            money = read_money(bridge, self.game)
+        except (ValueError, RuntimeError, KeyError):
+            return None
+        need = shopping_need(inventory, party, constants, self.wants_balls)
+        if not need.any or money < 500:
+            return None
+        coords = bridge.get_player_coords_and_map()
+        current = coords["map_group"], coords["map_num"]
+        position = (coords["x"], coords["y"])
+        candidates: list[tuple[float, dict[str, Any]]] = []
+        for target in self._mart_clerks():
+            key = int(target["map_group"]), int(target["map_num"])
+            if key == current:
+                candidates.append((0.0, target))
+                continue
+            route = self.graph.find_route(current, key, completed, position, bridge, validate_local=False)
+            if route is None:
+                continue
+            entry = route[-1].destination_xy if route else position
+            cost = self.graph.estimate_route_cost(route, position) + abs(int(target["x"]) - entry[0]) + \
+                abs(int(target["y"]) - entry[1])
+            if cost <= 90:
+                candidates.append((cost, target))
+        for _, target in sorted(candidates, key=lambda row: row[0])[:4]:
+            key = int(target["map_group"]), int(target["map_num"])
+            if key != current and self.graph.find_route(current, key, completed, position, bridge) is None:
+                continue
+            return {"mode": "SHOP", "dest": (*key, (int(target["x"]), int(target["y"]))), "action": "interact",
+                    "script": target["script"], "npc_local_id": target["npc_local_id"],
+                    "map_name": target["map_name"], "reason": f"Buy {need.reason} (money {money})",
+                    "shop_need": [need.heal_hp, need.balls]}
+        return None
+
     def get_active_directive(self, bridge: GBABridgeProtocol, party_summary: list[dict[str, Any]]) -> dict[str, Any]:
         if not self.custom_campaign and bridge.memory_map.game != self.game:
             raise ValueError("Planner campaign and bridge ROM differ")
         completed = self.completed_milestones(bridge, party_summary)
-        hp = sum(int(mon["hp"]) for mon in party_summary)
-        max_hp = max(1, sum(int(mon["maxHP"]) for mon in party_summary))
-        if party_summary and hp / max_hp < 0.4 and not bridge.is_in_battle()[0]:
-            return self._healing_directive(bridge, hp, max_hp, completed)
+        self._last_completed = completed
+        healing_reason = self._healing_reason(bridge, party_summary) if not bridge.is_in_battle()[0] else None
+        if healing_reason is not None:
+            hp = sum(int(mon["hp"]) for mon in party_summary)
+            max_hp = max(1, sum(int(mon["maxHP"]) for mon in party_summary))
+            healing_directive = self._healing_directive(bridge, hp, max_hp, completed)
+            healing_directive["reason"] = healing_reason
+            return healing_directive
+        shop = self.shopping_directive(bridge, party_summary, completed)
+        if shop is not None:
+            return shop
         for task in self.milestones:
             if task.milestone_id in completed or any(parent not in completed for parent in task.dependencies):
                 continue
-            level = max((int(mon["level"]) for mon in party_summary), default=0)
-            if party_summary and level < task.required_avg_level:
-                return self._training_directive(bridge, task, completed, party_summary)
+            def metadata(move: int) -> tuple[int, int]:
+                declared = getattr(bridge, "moves", None)
+                if isinstance(declared, dict) and move in declared:
+                    return int(declared[move].move_type), int(declared[move].power)
+                if self._rom_catalog is None:
+                    self._rom_catalog = RomCatalog(cast(Game, self.game))
+                info = self._rom_catalog.move(move)
+                return info.move_type, info.power
+
+            # Counter types learned from the objective's real roster override the
+            # hand-written campaign hint once a defeat has taught them.
+            required_types = self.learned_counters.get(task.milestone_id) or task.required_types
+            readiness = self.preparation.assess(task.milestone_id, task.required_avg_level,
+                                               party_summary, required_types, metadata)
+            if party_summary and not readiness.ready:
+                training = self._training_directive(bridge, replace(task, required_avg_level=readiness.target_level),
+                                                     completed, party_summary)
+                training.update(preparation_reason=readiness.reason, trained_battles=readiness.trained_battles,
+                                training_budget_exhausted=readiness.budget_exhausted)
+                return training
             missing_moves = [move for move in task.required_moves
                              if not any(move in mon["moves"] for mon in party_summary)]
             if missing_moves:
                 return {"mode": "TEACH_FIELD_MOVE", "milestone": task.milestone_id, "moves": missing_moves,
                         "action": "teach", "dest": (*task.map_key, task.target_coords)}
+            if (party_summary and self.is_battle_task(task) and not self.custom_campaign and
+                    not isinstance(getattr(bridge, "moves", None), dict) and not bridge.is_in_battle()[0]):
+                engage = self.preparation.engage_reason(task.milestone_id, party_summary, self.move_info,
+                                                        self.species_types)
+                if engage is None:
+                    self._restoring_for = ""
+                # Hysteresis: once a pre-battle restore started it continues
+                # until the team is ready, wherever the way to the center leads.
+                elif self._restoring_for != task.milestone_id and not self._near(bridge, task.map_key, completed):
+                    engage = None
+                if engage is not None:
+                    self._restoring_for = task.milestone_id
+                    hp = sum(int(mon["hp"]) for mon in party_summary)
+                    max_hp = max(1, sum(int(mon["maxHP"]) for mon in party_summary))
+                    restore = self._healing_directive(bridge, hp, max_hp, completed)
+                    if "dest" in restore:
+                        restore.update(reason=engage, pre_battle=task.milestone_id, milestone=task.milestone_id)
+                        return restore
             result: dict[str, Any] = {"mode": "EXECUTE_MILESTONE", "milestone": task.milestone_id,
                     "dest": (*task.map_key, task.target_coords), "action": task.action, "script": task.script,
                     "npc_local_id": task.npc_local_id, "map_name": task.map_name, "puzzle": task.puzzle,
                     "menu_choice": task.menu_choice, "required_types": task.required_types,
                     "completion_flag_id": task.completion_flag_id}
+            result["preparation_reason"] = readiness.reason
             target = self._task_target(bridge, task)
             if target is not None:
                 result.update(dest=(target["map_group"], target["map_num"], (target["x"], target["y"])),

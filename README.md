@@ -6,9 +6,9 @@ Esta guía permite preparar Windows desde un clon limpio, ejecutar una campaña 
 
 ## Estado actual y límites de la evidencia
 
-En el checkout de desarrollo se registraron 143 tests aprobados, mypy estricto aprobado y una demo sintética de ambos juegos. El entrenamiento registrado produjo VICReg `63.62 → 39.26`, Trajectory Balance `3662.38 → 180.39` y win rate PPO evaluado `39.1 % → 65.6 %`. DirectML falló en la comprobación completa de backward en este equipo; el entrenamiento usó CPU.
+La verificación incluye regresiones de evolución/aprendizaje, captura/Pokédex, paredes direccionales de cuevas, persecución de NPCs, ataques sin efecto y ciclos sin avance de historia. Los resultados del checkout se detallan en [estado y evidencia](docs/ESTADO_Y_EVIDENCIA.md). La ruta funcional de referencia usa CPU; DirectML debe superar sus propias comprobaciones antes de seleccionarse.
 
-Las campañas FireRed/Emerald nativas **siguen sin terminar ni certificarse**. Los status actuales disponibles son exploratorios: FireRed tiene 5 hitos y Emerald 8; ninguno registra medallas o entradas al Salón de la Fama. No presentes las capturas ni el demo como prueba de haber vencido al Campeón. Consulta [estado y evidencia](docs/ESTADO_Y_EVIDENCIA.md).
+Las campañas FireRed/Emerald nativas **siguen sin terminar ni certificarse**. La recuperación nativa de FireRed completó el guardián del fósil, el fósil de Mt. Moon y el rival de Ciudad Celeste; la de Emerald consiguió hablar con Briney y viajar a Dewford. Los contadores actuales se consultan en el dashboard y no son un benchmark desde una partida nueva. La certificación exige ocho medallas y entrada al Salón de la Fama.
 
 ## Requisitos del PC
 
@@ -76,13 +76,21 @@ Abre **dos ventanas de PowerShell** en `G:\ARES\ares-pkmn`. En la primera inicia
 
 El comando imprime el PID y crea `artifacts\processes\latest.json`, más logs stdout/stderr. `run` inicia una partida nueva con nombre ARES, Bulbasaur en FireRed y Mudkip en Emerald. Si ya existe progreso que quieras conservar, usa `resume` en vez de `run`.
 
-En la segunda abre la ventana visual del emulador:
+En la segunda abre la **estación de monitoreo** en el navegador:
+
+```powershell
+.\ARES.ps1 dashboard
+```
+
+Abre `http://127.0.0.1:8765/` con ambos juegos en vivo: pantalla real, estado del proceso, objetivo e hitos, medallas, Pokédex, dinero y tiempo de juego, equipo completo (nivel, PS, estado, tipos, EXP, movimientos y PP), combate en curso, tabla de decisiones con su riesgo, línea de tiempo filtrable, gráficos temporales, checkpoints y supervisor, más botones para guardar o detener. La pestaña **Entrenamiento** muestra la etapa, el proceso y las curvas reales de VICReg, Trajectory Balance, victorias PPO y pérdida de valor, separadas por sesión. Detalles en [monitoreo en vivo](docs/MONITOREO_EN_VIVO.md).
+
+También existe el visor de escritorio:
 
 ```powershell
 .\ARES.ps1 watch
 ```
 
-El visor muestra los framebuffers reales de 240×160, objetivo, mapa/coordenadas, party, contadores de combate/decisiones y eventos recientes para ambos juegos. `Esc` o cerrar esa ventana cierra únicamente el visor; no detiene las campañas. Para guardar una captura periódica de la ventana completa:
+El visor muestra los framebuffers reales de 240×160, objetivo, mapa/coordenadas, el equipo con nombres y barras de PS, la salud del agente, contadores de combate/decisiones y eventos recientes para ambos juegos. `Esc` o cerrar esa ventana cierra únicamente el visor; no detiene las campañas. Para guardar una captura periódica de la ventana completa:
 
 ```powershell
 .\ARES.ps1 watch -SnapshotPath artifacts\live_viewer.png
@@ -106,9 +114,21 @@ Para una prueba acotada, ejecuta en primer plano `.\ARES.ps1 run -Game firered -
 
 `--stop` solicita checkpoint y cierre ordenado; reanuda luego con `.\ARES.ps1 resume -Game both`. No mates el proceso desde el administrador de tareas si puedes usar esa parada.
 
+### Autonomía: qué pasa cuando algo falla
+
+Un error de política se registra (`agent_fault`) y provoca una nueva planificación. La recuperación tiene pasos y presupuestos explícitos: replanificar, resolver menús, desviar, vetar salidas y restaurar un checkpoint verificado. Un reloj estratégico independiente detecta falta de historia aunque siga aumentando la experiencia; el entrenamiento real le descuenta tiempo con un presupuesto acotado y, al vencer, el agente **cambia de estrategia** en lugar de repetir la misma. Cuando el supervisor agota los reinicios sin hitos nuevos, espera (`--stagnation-cooldown`, 300 s) y vuelve a intentarlo con las lecciones acumuladas. Los checkpoints se conservan por retención (24 recientes + hitos + fijados). Estas defensas reducen los ciclos conocidos; no garantizan resolver cualquier estado de la ROM. Detalles en [recuperación autónoma](docs/RECUPERACION_AUTONOMA.md).
+
+### Inteligencia: requisitos, lecciones y preparación
+
+- **Guardias y puertas con requisito**: el agente conoce, por análisis de los scripts originales, cada casilla que un script deshace (los guardias sedientos de Azafrán piden el Té; la tormenta de la Ruta 111 exige Gafas Aisladoras; los guardias de la Ruta 23, las medallas) y planifica rutas que no las crucen mientras el requisito falte. Si un script lo devuelve en un sitio desconocido, **aprende** ese paso denegado y no lo repite hasta que cambie el mundo (hito u objeto clave nuevo).
+- **Hacer algo antes de avanzar**: si todas las rutas están cerradas, busca qué las abre (la flag, el objeto o el evento que retira a unos NPCs) y va primero allí; por ejemplo, habla con Dock en el astillero de Portual para que la fila del Equipo Aqua deje libre el museo.
+- **Preparación y derrotas**: antes de un líder o rival se cura si el miembro principal no está casi lleno o sus mejores ataques tienen poco PP; cada derrota se analiza (entrar sin curar no sube el nivel objetivo, entrar preparado sí).
+- **Tiendas y pociones**: compra Superpociones y Poké Balls cuando hay dinero y una tienda cerca, y usa pociones en combate cuando atacar probablemente perdería.
+- **Lecciones duraderas** (`lessons.json`): pasos denegados, inmunidades observadas y derrotas sobreviven a retrocesos y reinicios.
+
 ## Entrenamiento visible
 
-Para que una campaña cargue el checkpoint neuronal recién entrenado, entrena **antes** de iniciar `run`/`resume`. En una tercera ventana PowerShell, o antes de abrir las dos ventanas anteriores:
+Para que una partida nueva cargue el checkpoint neuronal recién entrenado, entrena **antes** de iniciar `run`. `resume` restaura los pesos y el estado cognitivo guardados en su propio checkpoint de campaña. En una tercera ventana PowerShell:
 
 ```powershell
 New-Item -ItemType Directory -Force artifacts | Out-Null
@@ -118,7 +138,7 @@ New-Item -ItemType Directory -Force artifacts | Out-Null
 
 La consola imprime métricas JSON durante VICReg/Trajectory Balance y evaluación PPO; `Tee-Object` conserva una copia en `artifacts\training-live.log`. Para que la campaña use esos pesos, deja terminar el entrenamiento y después lánzala. Si prefieres monitorizar un entrenamiento de fondo ya iniciado mediante `.\ARES.ps1 train -Background`, consulta su ruta en `artifacts\processes\latest.json` y sigue el `stdout` con `Get-Content <ruta-stdout> -Wait`.
 
-La ventana del emulador muestra métricas de campaña; el entrenamiento imprime sus métricas en la consola de entrenamiento. Son flujos separados. Consulta [monitoreo en vivo](docs/MONITOREO_EN_VIVO.md) para comandos, rutas y recuperación.
+El entrenamiento publica también `artifacts/training/live.json` y `metrics.jsonl`. Puedes seguirlo en la pestaña **Entrenamiento** del mismo dashboard mientras los juegos avanzan; las curvas de laboratorio y la historia de las ROMs están identificadas por separado. Los pesos de una campaña en marcha no se sustituyen automáticamente al acabar ese entrenamiento.
 
 ## Comprobaciones y demo sintética
 
@@ -143,7 +163,7 @@ La verificación completa equivale a:
 - `core/`: emulación/bridge, memoria, combate, causalidad, navegación, modelos y orquestador.
 - `native/`: shim C/CMake y build local; fuentes de terceros adquiridas por setup en `native/vendor/`.
 - `config/`, `data/`: configuración y manifiesto de versiones, ROM hashes y símbolos.
-- `scripts/`: instalación, campaña, visor, entrenamiento y verificación.
+- `scripts/`: instalación, campaña y supervisor, estación de monitoreo web (`dashboard.py` + `dashboard_static/`), visor, entrenamiento y verificación.
 - `tests/`: pruebas sintéticas y unitarias.
 - `artifacts/`: logs, capturas, métricas y checkpoints locales. No se necesita versionar este directorio.
 
@@ -155,3 +175,4 @@ Las campañas registran decisiones demostradas/no demostradas, riesgo, desmayos 
 - [Campaña, visor y entrenamiento en vivo](docs/MONITOREO_EN_VIVO.md)
 - [Arquitectura, pruebas y evidencia](docs/ESTADO_Y_EVIDENCIA.md)
 - [Solución de problemas](docs/PROBLEMAS.md)
+- [Recuperación autónoma y reproducción de bloqueos](docs/RECUPERACION_AUTONOMA.md)

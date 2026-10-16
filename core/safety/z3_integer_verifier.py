@@ -127,7 +127,7 @@ class DamageContext:
             raise ValueError("move_type must be a native Gen-3 type ID")
         if not 0 <= self.attack_stage <= 12 or not 0 <= self.defense_stage <= 12:
             raise ValueError("stat stages must be native RAM values in [0, 12]")
-        expected = "physical" if self.move_type < 9 else "special"
+        expected = "special" if self.move_type >= 10 else "physical"
         if self.category is not None and self.category != expected:
             raise ValueError("category must follow the Gen-3 type category split")
         if not 1 <= len(self.type_modifiers) <= 2:
@@ -157,7 +157,7 @@ class DamageContext:
     @property
     def selected_category(self) -> Category:
         """Return the category derived from the native type, including reserve9."""
-        return "physical" if self.move_type < 9 else "special"
+        return "special" if self.move_type >= 10 else "physical"
 
 
 @dataclass(frozen=True, slots=True)
