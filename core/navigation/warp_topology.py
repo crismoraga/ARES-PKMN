@@ -454,7 +454,8 @@ class HierarchicalWarpGraph:
             collision, elevation = cast(Matrix, (packed >> 10) & 3), cast(Matrix, packed >> 12)
             # On-load scripts wall or open tiles depending on story flags; the
             # live map will show them, so the source plan must agree.
-            overlay = map_overlay(game, str(self.catalog.maps[key]["name"]), flags) if flags is not None else ()
+            overlay = (map_overlay(game, str(self.catalog.maps[key]["name"]), flags)
+                       if isinstance(flags, FlagSnapshot) else ())
             if overlay:
                 collision = collision.copy()
                 for x, y, impassable in overlay:

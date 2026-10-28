@@ -30,6 +30,7 @@ from core.training_monitor import read_training
 
 GAMES = ("firered", "emerald")
 STATIC = Path(__file__).resolve().parent / "dashboard_static"
+STADIUM = ROOT / "artifacts" / "stadium"
 _EVENT_NOISE = frozenset({"movement", "direct_damage_observed", "opponent_move_revealed", "memory_snapshot_retry",
                           "neural_weights_loaded"})
 
@@ -48,6 +49,39 @@ def encode_png(rgb: bytes, width: int = FRAME_WIDTH, height: int = FRAME_HEIGHT)
     header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw, 6))
             + chunk(b"IEND", b""))
+
+
+def stadium_runs(root: Path = STADIUM) -> list[dict[str, object]]:
+    """ARES-ADVERSARIAL leagues and comparisons, newest first (read-only)."""
+    runs: list[dict[str, object]] = []
+    if not root.is_dir():
+        return runs
+    for directory in root.iterdir():
+        live = directory / "live.json"
+        report = directory / "report.json"
+        if live.is_file() or report.is_file():
+            stamp = (live if live.is_file() else report).stat().st_mtime
+            runs.append({"run": directory.name, "kind": "league" if live.is_file() else "compare", "updated": stamp})
+    return sorted(runs, key=lambda row: -float(cast(float, row["updated"])))
+
+
+def stadium_live(run: str | None, root: Path = STADIUM) -> dict[str, object]:
+    """The live.json of a league (default: the newest one)."""
+    if run:
+        if "/" in run or "\\" in run or run.startswith("."):
+            raise ValueError("invalid run name")
+        directory = root / run
+    else:
+        runs = [row for row in stadium_runs(root) if row["kind"] == "league"]
+        if not runs:
+            return {"status": "absent"}
+        directory = root / str(runs[0]["run"])
+    live = directory / "live.json"
+    if not live.is_file():
+        return {"status": "absent", "run": directory.name}
+    data = cast(dict[str, object], json.loads(live.read_text(encoding="utf-8")))
+    data["age_s"] = round(time.time() - float(cast(float, data.get("updated", 0.0))), 1)
+    return data
 
 
 def thin(samples: list[dict[str, object]], limit: int) -> list[dict[str, object]]:
@@ -172,6 +206,12 @@ def make_handler(station: MonitoringStation) -> type[BaseHTTPRequestHandler]:
             try:
                 if not parts or parts == ["index.html"]:
                     self._send(HTTPStatus.OK, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
+                elif parts in (["stadium"], ["stadium.html"]):
+                    self._send(HTTPStatus.OK, (STATIC / "stadium.html").read_bytes(), "text/html; charset=utf-8")
+                elif parts == ["api", "stadium", "runs"]:
+                    self._json(stadium_runs())
+                elif parts == ["api", "stadium", "live"]:
+                    self._json(stadium_live(query.get("run", [""])[0] or None))
                 elif parts == ["api", "overview"]:
                     self._json(station.overview())
                 elif parts == ["api", "training"]:

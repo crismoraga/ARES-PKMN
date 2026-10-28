@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('run', 'resume', 'status', 'train', 'verify', 'setup', 'demo', 'watch', 'dashboard')]
+    [ValidateSet('run', 'resume', 'status', 'train', 'verify', 'setup', 'demo', 'watch', 'dashboard', 'stadium')]
     [string]$Action = 'status',
     [ValidateSet('firered', 'emerald', 'both')]
     [string]$Game = 'both',
@@ -10,6 +10,9 @@ param(
     [int]$MaxFrames,
     [switch]$Background,
     [switch]$Quick,
+    [switch]$Continue,
+    [ValidateRange(0, 64)]
+    [int]$Workers = -1,
     [string]$SnapshotPath,
     [ValidateRange(1, 65535)]
     [int]$Port = 8765
@@ -39,6 +42,14 @@ $aresArguments = switch ($Action) {
         else { @('-m', 'scripts.verify_installation') }
     }
     'demo' { @('-m', 'scripts.run_autonomous_verification_demo') }
+    'stadium' {
+        # ARES-ADVERSARIAL: ROJO (FireRed) vs AZUL (Emerald) coevolucionando sin fin.
+        $aresStadiumArgs = @('-m', 'scripts.run_stadium')
+        if ($Quick) { $aresStadiumArgs += '--smoke' }
+        if ($Continue) { $aresStadiumArgs += '--resume' }
+        if ($Workers -ge 0) { $aresStadiumArgs += @('--workers', $Workers.ToString()) }
+        $aresStadiumArgs
+    }
     'dashboard' {
         $aresDashboardArgs = @('-m', 'scripts.dashboard', '--backend', $Backend, '--port', $Port.ToString())
         if ($Background) { $aresDashboardArgs += '--no-browser' }
@@ -65,8 +76,8 @@ if ($Background) {
     if ($Action -eq 'watch') {
         throw 'El visor necesita una ventana visible; ejecútalo en primer plano con .\ARES.ps1 watch.'
     }
-    if ($Action -notin @('run', 'resume', 'train', 'verify', 'demo', 'dashboard')) {
-        throw '-Background se admite para run, resume, train, verify, demo y dashboard.'
+    if ($Action -notin @('run', 'resume', 'train', 'verify', 'demo', 'dashboard', 'stadium')) {
+        throw '-Background se admite para run, resume, train, verify, demo, dashboard y stadium.'
     }
     $aresLogDirectory = Join-Path $aresRoot 'artifacts\processes'
     New-Item -ItemType Directory -Force -Path $aresLogDirectory | Out-Null
@@ -85,6 +96,9 @@ if ($Background) {
     if ($Action -eq 'dashboard') {
         $aresState.url = "http://127.0.0.1:$Port/"
         Set-Content -LiteralPath (Join-Path $aresLogDirectory 'dashboard.json') -Value ($aresState | ConvertTo-Json) -Encoding utf8
+    } elseif ($Action -eq 'stadium') {
+        $aresState.url = "http://127.0.0.1:$Port/stadium"
+        Set-Content -LiteralPath (Join-Path $aresLogDirectory 'stadium.json') -Value ($aresState | ConvertTo-Json) -Encoding utf8
     } else {
         $aresState | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $aresLogDirectory 'latest.json') -Encoding utf8
     }

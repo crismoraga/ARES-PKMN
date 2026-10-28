@@ -126,6 +126,23 @@ Un error de política se registra (`agent_fault`) y provoca una nueva planificac
 - **Tiendas y pociones**: compra Superpociones y Poké Balls cuando hay dinero y una tienda cerca, y usa pociones en combate cuando atacar probablemente perdería.
 - **Lecciones duraderas** (`lessons.json`): pasos denegados, inmunidades observadas y derrotas sobreviven a retrocesos y reinicios.
 
+## ARES-ADVERSARIAL: agentes que coevolucionan en el Stadium
+
+Los Pokémon criados por los agentes de campaña se enfrentan en un Stadium Gen-3 propio: **ROJO** (FireRed) contra **AZUL** (Emerald), sin fin. Cada generación ocurre esto:
+
+- Un lado se ilumina con GAME, usando selección de tareas por Ranking (Anne et al., GECCO'26).
+- Los dos campeones combaten en vivo.
+- Cada lado aprende contrafactualmente de las jugadas mejores del otro.
+- La red de combate de la campaña imita a las élites, se entrena con PPO y se destila de vuelta al archivo.
+- La tabla de tipos se aprende de los mensajes de combate y se intercambia entre rivales.
+
+```powershell
+.\ARES.ps1 stadium -Background -Workers 14   # liga sin fin; -Continue la reanuda; -Quick es corta
+.\ARES.ps1 dashboard                         # http://127.0.0.1:8765/stadium
+```
+
+Detalles, contrato de información y límites del motor en [ARES-ADVERSARIAL](docs/STADIUM_ADVERSARIAL.md).
+
 ## Entrenamiento visible
 
 Para que una partida nueva cargue el checkpoint neuronal recién entrenado, entrena **antes** de iniciar `run`. `resume` restaura los pesos y el estado cognitivo guardados en su propio checkpoint de campaña. En una tercera ventana PowerShell:
@@ -164,6 +181,7 @@ La verificación completa equivale a:
 - `native/`: shim C/CMake y build local; fuentes de terceros adquiridas por setup en `native/vendor/`.
 - `config/`, `data/`: configuración y manifiesto de versiones, ROM hashes y símbolos.
 - `scripts/`: instalación, campaña y supervisor, estación de monitoreo web (`dashboard.py` + `dashboard_static/`), visor, entrenamiento y verificación.
+- `core/stadium/`: ARES-ADVERSARIAL (motor de combate, GAME/Ranking, métricas adversariales, aprendizaje entre adversarios); `scripts/run_stadium.py` lo ejecuta.
 - `tests/`: pruebas sintéticas y unitarias.
 - `artifacts/`: logs, capturas, métricas y checkpoints locales. No se necesita versionar este directorio.
 
@@ -176,3 +194,4 @@ Las campañas registran decisiones demostradas/no demostradas, riesgo, desmayos 
 - [Arquitectura, pruebas y evidencia](docs/ESTADO_Y_EVIDENCIA.md)
 - [Solución de problemas](docs/PROBLEMAS.md)
 - [Recuperación autónoma y reproducción de bloqueos](docs/RECUPERACION_AUTONOMA.md)
+- [ARES-ADVERSARIAL: coevolución y aprendizaje entre adversarios](docs/STADIUM_ADVERSARIAL.md)

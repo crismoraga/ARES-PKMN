@@ -568,7 +568,8 @@ def analyze_trainers(game: str, root: Path | None = None) -> dict[str, dict[str,
 
 def _reaches(program: _Program, label: str, command_name: str, limit: int = 64, argument: str = "") -> bool:
     """Whether any branch from ``label`` executes ``command_name`` (with ``argument``)."""
-    pending, seen = [label], set()
+    pending: list[str] = [label]
+    seen: set[str] = set()
     while pending and len(seen) < limit:
         current = pending.pop()
         if current in seen or current not in program.blocks:
@@ -614,10 +615,10 @@ def _elevator_floors(program: _Program, script: str,
                 menu = True
             elif name == "case" and len(arguments) >= 2:
                 value = int(arguments[0]) if arguments[0].isdecimal() else constants.get(arguments[0])
-                row = value if menu and choice is None and value is not None and value < 32 else choice
-                if menu and choice is None and row is None:
+                menu_row = value if menu and choice is None and value is not None and value < 32 else choice
+                if menu and choice is None and menu_row is None:
                     continue  # B pressed / out of menu: no floor
-                pending.append((arguments[1], row, menu))
+                pending.append((arguments[1], menu_row, menu))
             elif name == "setdynamicwarp" and len(arguments) >= 2 and choice is not None:
                 # formatwarp: (map, warp) | (map, x, y) | (map, warp, x, y).
                 try:

@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARES · Adversarial</title>
+<style>
+:root {
+  --bg: #0b1018; --panel: #121a26; --panel-2: #172131; --line: #233047; --line-soft: #1b2638;
+  --text: #e7edf6; --muted: #93a4ba; --faint: #64748b;
+  --green: #4ade80; --green-soft: rgba(74, 222, 128, .14);
+  --amber: #fbbf24; --amber-soft: rgba(251, 191, 36, .14);
+  --bad: #f87171; --violet: #a78bfa; --cyan: #22d3ee; --pink: #f472b6;
+  --red: #f97316; --red-soft: rgba(249, 115, 22, .14);
+  --blue: #38bdf8; --blue-soft: rgba(56, 189, 248, .14);
+  --radius: 12px; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f3f6fa; --panel: #ffffff; --panel-2: #f6f8fb; --line: #dbe3ee; --line-soft: #e8eef5;
+    --text: #0f172a; --muted: #475569; --faint: #94a3b8; --green: #16a34a; --amber: #b45309;
+    --red: #ea580c; --blue: #0284c7; color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f3f6fa; --panel: #ffffff; --panel-2: #f6f8fb; --line: #dbe3ee; --line-soft: #e8eef5;
+  --text: #0f172a; --muted: #475569; --faint: #94a3b8; --green: #16a34a; --amber: #b45309;
+  --red: #ea580c; --blue: #0284c7; color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; }
+a { color: var(--blue); }
+.topbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px 20px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line); }
+.brand { font-weight: 800; letter-spacing: .05em; white-space: nowrap; }
+.brand b { background: linear-gradient(90deg, var(--red), var(--blue)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand span { font-weight: 400; color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+.phase { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 240px; }
+.progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.progress > div { height: 100%; background: linear-gradient(90deg, var(--red), var(--blue)); width: 0; transition: width .4s; }
+select, .btn { background: var(--panel-2); border: 1px solid var(--line); color: var(--text); padding: 5px 10px; border-radius: 8px; font: inherit; }
+.btn { cursor: pointer; }
+main { padding: 18px 20px 40px; max-width: 1720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; min-width: 0; }
+.panel h3 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600;
+  display: flex; align-items: center; gap: 8px; }
+.panel h3 .aside { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--faint); }
+.arena { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: var(--panel-2); border: 1px solid var(--line); white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.running { color: var(--green); background: var(--green-soft); border-color: transparent; }
+.pill.stopped { color: var(--amber); background: var(--amber-soft); border-color: transparent; }
+.pill.absent { color: var(--muted); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); } .faint { color: var(--faint); }
+.side-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.side-head .bar { width: 6px; height: 30px; border-radius: 3px; }
+.side-head h2 { margin: 0; font-size: 19px; }
+.side-head .sub { color: var(--muted); font-size: 12px; }
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.kpi { background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 7px 9px; min-width: 0; }
+.kpi .label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .value { font: 600 17px/1.3 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.mon { display: grid; grid-template-columns: 112px 1fr; gap: 8px; align-items: baseline; padding: 5px 8px; border-radius: 8px; background: var(--panel-2); }
+.mon b { font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.meter { display: grid; grid-template-columns: 110px 1fr 46px; gap: 8px; align-items: center; font-size: 12px; margin: 4px 0; }
+.meter .track { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.meter .track > div { height: 100%; border-radius: 4px; transition: width .5s; }
+.score { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 4px 0 10px; }
+.score .big { font: 800 40px/1 var(--mono); }
+.score .vs { color: var(--faint); font-weight: 700; }
+.battle-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.battle-tabs button { background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 2px 10px; cursor: pointer; font-size: 12px; }
+.battle-tabs button.active { color: var(--text); border-color: var(--muted); }
+.log { height: 380px; overflow: auto; font: 12.5px/1.55 var(--mono); background: var(--panel-2); border-radius: 10px; padding: 10px 12px; border: 1px solid var(--line-soft); }
+.log div { white-space: pre-wrap; }
+.log .r { color: var(--red); } .log .b { color: var(--blue); } .log .sup { color: var(--green); } .log .res { color: var(--faint); }
+.log .ko { color: var(--bad); font-weight: 700; } .log .end { color: var(--amber); font-weight: 700; }
+svg.chart { width: 100%; height: 210px; display: block; }
+svg text { fill: var(--faint); font: 10px var(--mono); }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: 3px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { padding: 4px 6px; text-align: right; border-bottom: 1px solid var(--line-soft); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.heat { display: grid; gap: 2px; }
+.heat div { aspect-ratio: 1; border-radius: 2px; }
+.lesson { padding: 7px 9px; border-radius: 8px; background: var(--panel-2); margin-bottom: 6px; font-size: 12.5px; border-left: 3px solid var(--line); }
+.lesson.red { border-left-color: var(--red); } .lesson.blue { border-left-color: var(--blue); }
+.feed { max-height: 430px; overflow: auto; }
+.empty { color: var(--faint); text-align: center; padding: 40px 10px; }
+.axis-pick { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+@media (max-width: 1200px) { .arena, .grid-3 { grid-template-columns: minmax(0, 1fr); } .grid-2 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { main { padding: 12px 16px 30px; } .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><b>ARES · ADVERSARIAL</b><span>Stadium coevolutivo</span></div>
+  <span id="status" class="pill absent">sin liga</span>
+  <span class="num" id="gen">gen —</span>
+  <div class="phase"><div id="phase">Esperando datos…</div><div class="progress"><div id="prog"></div></div></div>
+  <span class="num muted" id="tput">—</span>
+  <select id="run" title="Liga"></select>
+  <a href="/" class="btn" style="text-decoration:none">← Campañas</a>
+</header>
+<main>
+  <section class="arena">
+    <div class="panel" id="side-red"></div>
+    <div class="panel">
+      <h3>Duelo en vivo de campeones <span class="aside" id="duel-gen"></span></h3>
+      <div class="score"><span class="big" style="color:var(--red)" id="score-red">0</span><span class="vs">VS</span><span class="big" style="color:var(--blue)" id="score-blue">0</span></div>
+      <div class="battle-tabs" id="battle-tabs"></div>
+      <div class="log" id="log"><div class="empty">El primer duelo llega al terminar la primera generación.</div></div>
+    </div>
+    <div class="panel" id="side-blue"></div>
+  </section>
+  <section class="grid-2">
+    <div class="panel"><h3>Elo de los campeones <span class="aside">liga online</span></h3><svg class="chart" id="chart-elo"></svg><div class="legend" id="legend-elo"></div></div>
+    <div class="panel"><h3>Calidad del archivo MAP-Elites <span class="aside">fitness vs tareas rivales</span></h3><svg class="chart" id="chart-fit"></svg><div class="legend" id="legend-fit"></div></div>
+    <div class="panel"><h3>Progreso absoluto <span class="aside">victorias del campeón contra el ancla codiciosa</span></h3><svg class="chart" id="chart-anchor"></svg><div class="legend" id="legend-anchor"></div></div>
+    <div class="panel"><h3>Conocimiento aprendido e intercambiado <span class="aside">celdas de la tabla de tipos</span></h3><svg class="chart" id="chart-know"></svg><div class="legend" id="legend-know"></div></div>
+  </section>
+  <section class="grid-2">
+    <div class="panel">
+      <h3>Archivo de élites (comportamiento) <span class="aside axis-pick">X <select id="ax"></select> Y <select id="ay"></select> lado <select id="aside"><option value="red">ROJO</option><option value="blue">AZUL</option></select></span></h3>
+      <svg class="chart" id="chart-archive" style="height:300px"></svg>
+      <div class="legend" id="legend-archive"></div>
+    </div>
+    <div class="panel">
+      <h3>Torneo entre tareas y métricas QD adversariales <span class="aside">Anne et al., GECCO'26</span></h3>
+      <div id="matrix"></div>
+      <div id="metrics" style="margin-top:12px"></div>
+    </div>
+  </section>
+  <section class="grid-3">
+    <div class="panel"><h3>Lecciones entre adversarios <span class="aside" id="lesson-count"></span></h3><div class="feed" id="lessons"></div></div>
+    <div class="panel"><h3>Tabla de tipos aprendida <span class="aside" id="chart-cells"></span></h3><div id="typechart"></div><div class="faint" style="font-size:11.5px;margin-top:6px">Aprendida solo de mensajes de combate («súper eficaz», «no afecta»…), nunca leída de la ROM.</div></div>
+    <div class="panel"><h3>Clasificación Elo</h3><div class="feed" id="elo"></div></div>
+  </section>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const COLORS = {red: "var(--red)", blue: "var(--blue)"};
+const ORIGIN_ES = {variation: "variación", prior: "experto", random: "aleatorio", lesson: "lección", deep_student: "estudiante profundo", lamarck: "variación + lecciones del rival"};
+const ORIGIN_SHAPE = {variation: "circle", prior: "square", random: "square", lesson: "diamond", deep_student: "triangle", lamarck: "diamond"};
+const TYPE_SHORT = ["NOR","LUC","VOL","VEN","TIE","ROC","BIC","FAN","ACE","FUE","AGU","PLA","ELE","PSI","HIE","DRA","SIN"];
+const BEHAVIOR_ES = {switch_rate: "tasa de cambios", status_rate: "movs. de estado", aggression: "agresividad", risk: "riesgo con PS bajos",
+  length: "duración", setup_rate: "potenciación", roster_usage: "uso del equipo", super_rate: "golpes súper eficaces"};
+const METRIC_ES = {win_rate: "Tasa de victoria", elo: "ELO (rango)", robustness: "Robustez", coverage: "Cobertura", expertise: "Pericia", aqd: "AQD-score"};
+let state = null, currentRun = "", selectedBattle = 0, shownDuel = "", replayTimer = null;
+
+function fmt(v, d = 2) { return v === null || v === undefined || Number.isNaN(v) ? "—" : (typeof v === "number" ? v.toFixed(d) : v); }
+function pct(v) { return v === null || v === undefined ? "—" : Math.round(v * 100) + "%"; }
+
+function sideCard(name, side, eloMap) {
+  if (!side) return '<div class="empty">—</div>';
+  const champ = side.champion;
+  const elo = champ ? eloMap[(name === "red" ? "R" : "B") + champ.uid] : null;
+  const deep = side.deep || {};
+  const anchors = side.anchors || {};
+  let html = `<div class="side-head"><div class="bar" style="background:${COLORS[name]}"></div><div><h2>${esc(side.label)}</h2>
+    <div class="sub">${side.roster.length} Pokémon criados por el agente de campaña · ${side.tasks.length} élites como tareas</div></div></div>
+    <div class="kpis">
+      <div class="kpi"><div class="label">Elo campeón</div><div class="value">${elo ? Math.round(elo) : "—"}</div></div>
+      <div class="kpi"><div class="label">QD-score</div><div class="value">${fmt(side.qd_score, 1)}</div></div>
+      <div class="kpi"><div class="label">Élites</div><div class="value">${side.archive.length}</div></div>
+      <div class="kpi"><div class="label">Lecciones</div><div class="value">${side.lessons}</div></div>
+      <div class="kpi"><div class="label">Celdas de tipos</div><div class="value">${side.knowledge.cells}</div></div>
+      <div class="kpi"><div class="label">Temperatura</div><div class="value">${champ ? fmt(champ.temperature) : "—"}</div></div>
+    </div>`;
+  if (champ) {
+    html += `<div class="muted" style="font-size:12px;margin-bottom:6px">Campeón #${champ.uid} · origen <b>${esc(ORIGIN_ES[champ.origin] || champ.origin)}</b> · fitness medio ${fmt(champ.fitness, 3)}</div><div class="team">`;
+    for (const m of champ.team) html += `<div class="mon"><b>${esc(m.name)} <span class="faint num">${m.level}</span></b><div class="chips">${m.moves.map((x) => `<span class="chip">${esc(x)}</span>`).join("")}</div></div>`;
+    html += "</div>";
+  }
+  const meter = (label, value, color) => `<div class="meter"><span class="muted">${label}</span><div class="track"><div style="width:${Math.round((value || 0) * 100)}%;background:${color}"></div></div><span class="num">${pct(value)}</span></div>`;
+  html += meter("vs ancla codiciosa", anchors.greedy, COLORS[name]) + meter("vs ancla aleatoria", anchors.random, "var(--faint)");
+  if (deep.ppo_updates !== undefined) {
+    html += `<div style="margin-top:8px;font-size:12px" class="muted">Aprendiz profundo (Transformer + SSM de la campaña)</div>`
+      + meter("imita élites", deep.imitation_accuracy, "var(--violet)") + meter("PPO vs rival", deep.ppo_win_rate, "var(--cyan)")
+      + meter("estudiante MLP", deep.student_accuracy, "var(--pink)")
+      + `<div class="faint" style="font-size:11.5px">${fmt(deep.ppo_updates, 0)} actualizaciones PPO · ${fmt(deep.samples, 0)} decisiones imitadas</div>`;
+  }
+  return html;
+}
+
+function classify(line) {
+  if (line.startsWith("¡Gana") || line.startsWith("Empate")) return "end";
+  if (line.includes("se debilitó")) return "ko";
+  if (line.includes("súper eficaz")) return "sup";
+  if (line.includes("(ROJO")) return "r";
+  if (line.includes("(AZUL")) return "b";
+  if (line.startsWith("ROJO")) return "r";
+  if (line.startsWith("AZUL")) return "b";
+  return "res";
+}
+
+function renderDuel(duel) {
+  if (!duel || !duel.battles) return;
+  $("score-red").textContent = duel.score[0];
+  $("score-blue").textContent = duel.score[1];
+  $("duel-gen").textContent = `generación ${duel.generation} · empates ${duel.score[2]}`;
+  const key = `${duel.generation}`;
+  if (key !== shownDuel) { shownDuel = key; selectedBattle = 0; animate(duel.battles[0]); }
+  $("battle-tabs").innerHTML = duel.battles.map((b, i) => `<button class="${i === selectedBattle ? "active" : ""}" data-i="${i}">Combate ${i + 1} · ${b.winner === 0 ? "ROJO" : b.winner === 1 ? "AZUL" : "empate"} · ${b.turns} t</button>`).join("");
+  for (const button of $("battle-tabs").querySelectorAll("button")) button.onclick = () => { selectedBattle = +button.dataset.i; animate(duel.battles[selectedBattle], true); renderDuel(duel); };
+}
+
+function animate(battle, instant = false) {
+  clearInterval(replayTimer);
+  const log = $("log"); log.innerHTML = "";
+  const lines = battle.log || [];
+  let i = 0;
+  const push = () => { const div = document.createElement("div"); div.className = classify(lines[i]); div.textContent = lines[i]; log.appendChild(div); log.scrollTop = log.scrollHeight; i++; };
+  if (instant) { while (i < lines.length) push(); return; }
+  replayTimer = setInterval(() => { if (i >= lines.length) { clearInterval(replayTimer); return; } push(); }, 140);
+}
+
+function lineChart(svg, series, opts = {}) {
+  const W = svg.clientWidth || 600, H = svg.clientHeight || 210, L = 38, R = 10, T = 10, B = 22;
+  const all = series.flatMap((s) => s.points);
+  if (!all.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">sin datos aún</text>`; return; }
+  const xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs, x0 + 1);
+  let y0 = opts.yMin ?? Math.min(...ys), y1 = opts.yMax ?? Math.max(...ys);
+  if (y1 - y0 < 1e-9) { y0 -= 1; y1 += 1; }
+  const sx = (x) => L + (x - x0) / (x1 - x0) * (W - L - R), sy = (y) => T + (1 - (y - y0) / (y1 - y0)) * (H - T - B);
+  let out = "";
+  for (let k = 0; k <= 4; k++) { const y = y0 + (y1 - y0) * k / 4; out += `<line x1="${L}" x2="${W - R}" y1="${sy(y)}" y2="${sy(y)}" stroke="var(--line-soft)"/><text x="${L - 4}" y="${sy(y) + 3}" text-anchor="end">${opts.percent ? Math.round(y * 100) + "%" : (Math.abs(y) >= 100 ? Math.round(y) : y.toFixed(2))}</text>`; }
+  const ticks = Math.min(8, x1 - x0);
+  for (let k = 0; k <= ticks; k++) { const x = Math.round(x0 + (x1 - x0) * k / Math.max(1, ticks)); out += `<text x="${sx(x)}" y="${H - 6}" text-anchor="middle">${x}</text>`; }
+  for (const s of series) {
+    if (!s.points.length) continue;
+    const pts = s.points.map((p) => `${sx(p[0]).toFixed(1)},${sy(p[1]).toFixed(1)}`).join(" ");
+    out += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" ${s.dash ? 'stroke-dasharray="5 4"' : ""}/>`;
+    for (const p of s.points) out += `<circle cx="${sx(p[0])}" cy="${sy(p[1])}" r="2.6" fill="${s.color}"><title>${s.name}: gen ${p[0]} → ${p[1].toFixed(3)}</title></circle>`;
+  }
+  svg.innerHTML = out;
+}
+
+function legend(id, series) { $(id).innerHTML = series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join(""); }
+
+function charts(history, exchange) {
+  const by = (side, f) => history.filter((h) => h.side === side || side === "*").map((h) => [h.generation, f(h)]).filter((p) => p[1] !== null && p[1] !== undefined);
+  const elo = [
+    {name: "ROJO", color: COLORS.red, points: history.filter((h) => h.elo && h.elo.red).map((h) => [h.generation, h.elo.red])},
+    {name: "AZUL", color: COLORS.blue, points: history.filter((h) => h.elo && h.elo.blue).map((h) => [h.generation, h.elo.blue])}];
+  lineChart($("chart-elo"), elo); legend("legend-elo", elo);
+  const fit = [
+    {name: "ROJO mejor", color: COLORS.red, points: by("red", (h) => h.best)},
+    {name: "ROJO medio", color: COLORS.red, dash: true, points: by("red", (h) => h.mean)},
+    {name: "AZUL mejor", color: COLORS.blue, points: by("blue", (h) => h.best)},
+    {name: "AZUL medio", color: COLORS.blue, dash: true, points: by("blue", (h) => h.mean)}];
+  lineChart($("chart-fit"), fit, {yMin: 0, yMax: 1, percent: true}); legend("legend-fit", fit);
+  const anchor = [
+    {name: "ROJO vs codicioso", color: COLORS.red, points: by("red", (h) => h.anchors && h.anchors.greedy)},
+    {name: "AZUL vs codicioso", color: COLORS.blue, points: by("blue", (h) => h.anchors && h.anchors.greedy)},
+    {name: "ROJO vs aleatorio", color: COLORS.red, dash: true, points: by("red", (h) => h.anchors && h.anchors.random)},
+    {name: "AZUL vs aleatorio", color: COLORS.blue, dash: true, points: by("blue", (h) => h.anchors && h.anchors.random)}];
+  lineChart($("chart-anchor"), anchor, {yMin: 0, yMax: 1, percent: true}); legend("legend-anchor", anchor);
+  const know = [
+    {name: "ROJO celdas", color: COLORS.red, points: history.map((h) => [h.generation, h.knowledge_cells.red])},
+    {name: "AZUL celdas", color: COLORS.blue, points: history.map((h) => [h.generation, h.knowledge_cells.blue])},
+    {name: "ROJO ganó del rival", color: COLORS.red, dash: true, points: exchange.map((e) => [e.generation, e.red_gained])},
+    {name: "AZUL ganó del rival", color: COLORS.blue, dash: true, points: exchange.map((e) => [e.generation, e.blue_gained])}];
+  lineChart($("chart-know"), know, {yMin: 0}); legend("legend-know", know);
+}
+
+function archive(data) {
+  const names = data.behavior_names || [];
+  for (const id of ["ax", "ay"]) if (!$(id).options.length) {
+    $(id).innerHTML = names.map((n, i) => `<option value="${i}">${esc(BEHAVIOR_ES[n] || n)}</option>`).join("");
+    $(id).value = id === "ax" ? String(names.indexOf("aggression")) : String(names.indexOf("switch_rate"));
+    $(id).onchange = () => archive(state);
+  }
+  const side = $("aside").value, cells = (data.sides[side] || {}).archive || [];
+  const svg = $("chart-archive"), W = svg.clientWidth || 600, H = svg.clientHeight || 300, P = 30;
+  const ax = +$("ax").value, ay = +$("ay").value;
+  if (!cells.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">archivo vacío</text>`; return; }
+  let out = `<rect x="${P}" y="8" width="${W - P - 8}" height="${H - P - 8}" fill="none" stroke="var(--line)"/>`;
+  out += `<text x="${(W + P) / 2}" y="${H - 6}" text-anchor="middle">${esc(BEHAVIOR_ES[names[ax]] || names[ax])} →</text><text x="12" y="${H / 2}" transform="rotate(-90 12 ${H / 2})" text-anchor="middle">${esc(BEHAVIOR_ES[names[ay]] || names[ay])} →</text>`;
+  const sx = (v) => P + 4 + v * (W - P - 16), sy = (v) => 12 + (1 - v) * (H - P - 16);
+  const color = side === "red" ? [249, 115, 22] : [56, 189, 248];
+  for (const c of cells) {
+    const x = sx(c.behavior[ax] ?? 0), y = sy(c.behavior[ay] ?? 0), a = 0.25 + 0.75 * c.fitness, r = 4 + 5 * c.fitness;
+    const fill = `rgba(${color.join(",")},${a.toFixed(2)})`, title = `<title>#${c.uid} · ${ORIGIN_ES[c.origin] || c.origin} · tarea ${c.task} · fitness ${c.fitness.toFixed(3)}</title>`;
+    const shape = ORIGIN_SHAPE[c.origin] || "circle";
+    if (shape === "square") out += `<rect x="${x - r}" y="${y - r}" width="${2 * r}" height="${2 * r}" fill="${fill}" stroke="var(--panel)">${title}</rect>`;
+    else if (shape === "diamond") out += `<polygon points="${x},${y - r * 1.3} ${x + r * 1.3},${y} ${x},${y + r * 1.3} ${x - r * 1.3},${y}" fill="${fill}" stroke="var(--text)">${title}</polygon>`;
+    else if (shape === "triangle") out += `<polygon points="${x},${y - r * 1.4} ${x + r * 1.3},${y + r} ${x - r * 1.3},${y + r}" fill="${fill}" stroke="var(--text)">${title}</polygon>`;
+    else out += `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="var(--panel)">${title}</circle>`;
+  }
+  svg.innerHTML = out;
+  $("legend-archive").innerHTML = "● variación · ■ experto/aleatorio · ◆ refinado con lecciones del rival · ▲ estudiante del aprendiz profundo — tamaño y opacidad = fitness";
+}
+
+function matrix(m) {
+  if (!m || !m.matrix) { $("matrix").innerHTML = '<div class="empty">El torneo aparece cuando ambos lados tienen élites.</div>'; $("metrics").innerHTML = ""; return; }
+  const rows = m.matrix, cols = rows[0].length;
+  let html = `<div class="muted" style="font-size:12px;margin-bottom:6px">Filas: tareas ROJAS · Columnas: tareas AZULES · color = fitness de ROJO</div><div class="heat" style="grid-template-columns:repeat(${cols},minmax(0,1fr));max-width:${Math.min(520, cols * 46)}px">`;
+  for (const row of rows) for (const v of row) {
+    const t = Math.max(0, Math.min(1, v)), r = Math.round(56 + (249 - 56) * t), g = Math.round(189 + (115 - 189) * t), b = Math.round(248 + (22 - 248) * t);
+    html += `<div style="background:rgb(${r},${g},${b})" title="${v.toFixed(3)}"></div>`;
+  }
+  $("matrix").innerHTML = html + "</div>";
+  let t = `<table><tr><th>Métrica</th><th style="color:var(--red)">ROJO</th><th style="color:var(--blue)">AZUL</th></tr>`;
+  for (const k of ["win_rate", "elo", "robustness", "coverage", "expertise", "aqd"]) {
+    const f = (v) => v === null || v === undefined ? "∞" : (k === "aqd" ? v : (k === "win_rate" || k === "coverage" || k === "elo" ? pct(v) : v.toFixed(3)));
+    t += `<tr><td>${METRIC_ES[k]}</td><td class="num">${f(m.red && m.red[k])}</td><td class="num">${f(m.blue && m.blue[k])}</td></tr>`;
+  }
+  $("metrics").innerHTML = t + "</table>";
+}
+
+function lessons(data) {
+  const recent = (data.lessons && data.lessons.recent) || [];
+  $("lesson-count").textContent = `${(data.lessons && data.lessons.total) || 0} en total`;
+  if (!recent.length) { $("lessons").innerHTML = '<div class="empty">Aún no hay posiciones donde un adversario supere al otro.</div>'; return; }
+  const act = (a) => a < 4 ? `movimiento ${a + 1}` : `cambio al banco ${a - 3}`;
+  $("lessons").innerHTML = recent.slice().reverse().map((l) => {
+    const who = l.learner === "red" ? "ROJO" : "AZUL", rival = l.learner === "red" ? "AZUL" : "ROJO";
+    const why = l.kind === "imitar_rival" ? `imita a ${rival}: su jugada era mejor` : `corrige su error: ${rival} jugó mejor`;
+    const f = l.features || {};
+    return `<div class="lesson ${l.learner}"><b>${who}</b> ${why} · gen ${l.generation}, turno ${l.turn}<br>
+      <span class="muted">${act(l.target)} en vez de ${act(l.rejected)} · ventaja <span class="num">+${(l.advantage * 100).toFixed(1)}</span> pts de fitness · PS propios ${pct(f.own_hp)}, rival ${pct(f.foe_hp)}, amenaza ${fmt(f.threat)}</span></div>`;
+  }).join("");
+}
+
+function typechart(data) {
+  const side = $("aside").value, table = ((data.sides[side] || {}).knowledge || {}).table || [];
+  $("chart-cells").textContent = `${((data.sides[side] || {}).knowledge || {}).cells || 0} / 289 celdas (${side === "red" ? "ROJO" : "AZUL"})`;
+  if (!table.length) { $("typechart").innerHTML = ""; return; }
+  const color = (v) => v === null ? "var(--line-soft)" : v === 0 ? "#111827" : v < 1 ? "#ef4444" : v > 1 ? "#22c55e" : "#64748b";
+  let html = `<div class="heat" style="grid-template-columns:28px repeat(17,minmax(0,1fr));font-size:8.5px">`;
+  html += `<span></span>` + TYPE_SHORT.map((t) => `<span class="faint" style="writing-mode:vertical-rl;text-align:center">${t}</span>`).join("");
+  table.forEach((row, i) => { html += `<span class="faint">${TYPE_SHORT[i]}</span>` + row.map((v, j) => `<div style="background:${color(v)}" title="${TYPE_SHORT[i]} → ${TYPE_SHORT[j]}: ${v === null ? "desconocido" : "×" + v}"></div>`).join(""); });
+  $("typechart").innerHTML = html + "</div>";
+}
+
+function eloTable(rows) {
+  const label = (n) => n.startsWith("R") ? `<span style="color:var(--red)">ROJO #${n.slice(1)}</span>` : n.startsWith("B") ? `<span style="color:var(--blue)">AZUL #${n.slice(1)}</span>` : `<span class="faint">${esc(n.replace("ANCLA-", "ancla "))}</span>`;
+  $("elo").innerHTML = `<table><tr><th>Agente</th><th>Elo</th><th>Partidas</th></tr>${rows.map((r) => `<tr><td>${label(r[0])}</td><td class="num">${r[1]}</td><td class="num">${r[2]}</td></tr>`).join("")}</table>`;
+}
+
+function render(data) {
+  state = data;
+  const status = data.status || "absent";
+  $("status").className = `pill ${status === "running" && (data.age_s || 0) < 120 ? "running" : status === "absent" ? "absent" : "stopped"}`;
+  $("status").textContent = status === "absent" ? "sin liga" : status === "running" ? ((data.age_s || 0) < 120 ? "en vivo" : "sin latido") : "detenida";
+  if (status === "absent") { $("phase").textContent = "Inicia una liga: .\\ARES.ps1 stadium"; return; }
+  $("gen").textContent = `gen ${data.generation}`;
+  $("phase").textContent = data.phase;
+  const p = data.progress || {};
+  $("prog").style.width = p.budget ? `${Math.min(100, 100 * p.done / p.budget)}%` : "0%";
+  const t = data.throughput || {};
+  $("tput").textContent = `${(t.battles || 0).toLocaleString("es")} combates · ${fmt(t.battles_per_s, 0)}/s`;
+  const eloMap = Object.fromEntries((data.elo || []).map((r) => [r[0], r[1]]));
+  for (const h of data.history || []) if (h.elo) Object.entries(h.elo).forEach(([k, v]) => { const champ = h.side === k ? h.champion : null; if (champ) eloMap[(k === "red" ? "R" : "B") + champ] ??= v; });
+  $("side-red").innerHTML = sideCard("red", data.sides.red, eloMap);
+  $("side-blue").innerHTML = sideCard("blue", data.sides.blue, eloMap);
+  renderDuel(data.duel);
+  charts(data.history || [], data.exchange || []);
+  archive(data); matrix(data.metrics); lessons(data); typechart(data); eloTable(data.elo || []);
+}
+
+async function runs() {
+  try {
+    const list = await (await fetch("/api/stadium/runs")).json();
+    const select = $("run"), previous = select.value;
+    select.innerHTML = list.filter((r) => r.kind === "league").map((r) => `<option value="${esc(r.run)}">${esc(r.run)}</option>`).join("");
+    if (previous) select.value = previous;
+    currentRun = select.value;
+  } catch (e) { /* the server may be restarting */ }
+}
+
+async function poll() {
+  try {
+    const url = currentRun ? `/api/stadium/live?run=${encodeURIComponent(currentRun)}` : "/api/stadium/live";
+    render(await (await fetch(url, {cache: "no-store"})).json());
+  } catch (e) { $("status").className = "pill stopped"; $("status").textContent = "sin conexión"; }
+}
+
+$("run").onchange = () => { currentRun = $("run").value; shownDuel = ""; poll(); };
+$("aside").onchange = () => { if (state) { archive(state); typechart(state); } };
+window.addEventListener("resize", () => state && render(state));
+runs().then(poll);
+setInterval(poll, 2000);
+setInterval(runs, 15000);
+</script>
+</body>
+</html>
