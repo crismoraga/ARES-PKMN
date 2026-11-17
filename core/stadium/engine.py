@@ -74,6 +74,14 @@ STATUS_BERRIES = {ITEM_CHERI: PARALYSIS, ITEM_CHESTO: SLEEP_MASK, ITEM_PECHA: PO
                   ITEM_RAWST: BURN, ITEM_ASPEAR: FREEZE}
 
 SOUND_MOVES = frozenset({45, 46, 47, 48, 103, 173, 195, 215, 253, 304, 319, 320})
+# Semi-invulnerable states (by the move that started them) and the moves that still reach them;
+# the second set hits for double power (decomp: STATUS3_ON_AIR / UNDERGROUND / UNDERWATER).
+_SEMI_REACH: dict[int, tuple[frozenset[int], frozenset[int]]] = {
+    19: (frozenset({16, 87, 239, 327}), frozenset({16, 239})),    # Fly: Gust, Thunder, Twister, Sky Uppercut
+    340: (frozenset({16, 87, 239, 327}), frozenset({16, 239})),   # Bounce
+    91: (frozenset({89, 222}), frozenset({89, 222})),             # Dig: Earthquake, Magnitude
+    291: (frozenset({57, 250}), frozenset({57, 250})),            # Dive: Surf, Whirlpool
+}
 # Effects whose damage or status logic is modelled; the rest are flagged.
 _STAT_UP = {10: (ATK, 1), 11: (DEF, 1), 12: (SPE, 1), 13: (SPA, 1), 14: (SPD, 1), 15: (ACC, 1), 16: (EVA, 1),
             50: (ATK, 2), 51: (DEF, 2), 52: (SPE, 2), 53: (SPA, 2), 54: (SPD, 2), 55: (ACC, 2), 56: (EVA, 2),
@@ -139,8 +147,8 @@ class Fighter:
                  "charging", "invulnerable", "lock_slot", "lock_turns", "rampage", "trap_turns", "trapped_by",
                  "focus_energy", "yawn", "ingrain", "taken_physical", "taken_special", "hit_by_target",
                  "turns_active", "last_slot", "item", "flash_fire", "taunt", "encore", "disabled_slot",
-                 "disabled_turns", "cursed", "truant_idle", "ability", "choice_slot", "fake_out_ready",
-                 "focus_punch")
+                 "disabled_turns", "cursed", "truant_idle", "ability", "choice_slot", "first_turn",
+                 "rollout", "fury_cutter", "defense_curl")
 
     def __init__(self, spec: MonSpec, types: tuple[int, int], dex: Dex) -> None:
         self.spec = spec
@@ -166,7 +174,7 @@ class Fighter:
         self.enduring = False
         self.recharge = False
         self.charging = -1
-        self.invulnerable = False
+        self.invulnerable = 0  # id of the semi-invulnerable move in progress (Fly, Dig, Dive, Bounce)
         self.lock_slot = -1
         self.lock_turns = 0
         self.rampage = False
@@ -188,8 +196,10 @@ class Fighter:
         self.cursed = False
         self.truant_idle = False
         self.choice_slot = -1
-        self.fake_out_ready = True
-        self.focus_punch = False
+        self.first_turn = 0   # Fake Out window (decomp: gDisableStructs.isFirstTurn)
+        self.rollout = 0      # consecutive Rollout/Ice Ball hits (locked while > 0)
+        self.fury_cutter = 0  # consecutive Fury Cutter hits
+        self.defense_curl = False
 
     @property
     def alive(self) -> bool:
@@ -269,7 +279,10 @@ class Battle:
         self.log: list[Event] = []  # events of the last submit only
         self.pending: tuple[int, ...] = (0, 1)
         self._replacing = False
+        self._landed = False   # did the move being executed deal damage?
+        self._pursuit = False  # Pursuit catching a switching target
         for side in (0, 1):
+            self.sides[side].fighter.first_turn = 1
             self._emit(("switch", side, 0, self.sides[side].fighter.spec.species))
         for side in self._speed_order():
             self._on_entry(side)
@@ -291,6 +304,7 @@ class Battle:
         copy.max_turns, copy.winner, copy.record = self.max_turns, self.winner, False
         copy.events, copy.log = [], []
         copy.pending, copy._replacing = self.pending, self._replacing
+        copy._landed, copy._pursuit = False, False
         return copy
 
     def legal_actions(self, side: int) -> list[int]:
@@ -302,7 +316,7 @@ class Battle:
         switches = [4 + position for position, index in enumerate(own.bench()[:5]) if own.party[index].alive]
         if self._replacing:
             return switches
-        if fighter.recharge or fighter.charging >= 0 or fighter.rampage:
+        if fighter.recharge or fighter.charging >= 0 or fighter.rampage or fighter.rollout:
             return [max(0, fighter.lock_slot if fighter.lock_slot >= 0 else fighter.charging)]
         if fighter.encore and fighter.last_slot >= 0 and fighter.pp[fighter.last_slot] > 0:
             moves = [fighter.last_slot]
@@ -400,19 +414,32 @@ class Battle:
             fighter.protected = fighter.enduring = fighter.flinched = fighter.hit_by_target = False
             fighter.taken_physical = fighter.taken_special = 0
         switching = [side for side in (0, 1) if actions[side] >= 4]
+        pursued: set[int] = set()
         for side in sorted(switching, key=lambda value: -self._speed(value)):
             self._emit(("action", side, "switch", actions[side]))
+            foe_side = 1 - side
+            hunter = self.sides[foe_side].fighter
+            if (actions[foe_side] < 4 and hunter.alive and
+                    self._move_for(hunter, actions[foe_side]).effect == 128):
+                # Pursuit strikes the target before it leaves, with doubled power.
+                self._pursuit = True
+                self._use_move(foe_side, actions[foe_side], moved_last=False)
+                self._pursuit = False
+                pursued.add(foe_side)
+                if self._check_end():
+                    return
+                if not self.sides[side].fighter.alive:
+                    continue  # caught: the replacement comes in after the turn
             self._switch_in(side, self._bench_index(side, actions[side]))
             if self.over:
                 return
-        movers = [side for side in (0, 1) if actions[side] < 4]
+        movers = [side for side in (0, 1) if actions[side] < 4 and side not in pursued]
         order = self._move_order(movers, actions)
         for position, side in enumerate(order):
             fighter = self.sides[side].fighter
             if not fighter.alive or self.over:
                 continue
             slot = actions[side]
-            fighter.focus_punch = False
             self._use_move(side, slot, moved_last=position == len(order) - 1 and len(order) == 2)
             if self._check_end():
                 return
@@ -422,7 +449,7 @@ class Battle:
             fighter = self.sides[side].fighter
             if fighter.alive:
                 fighter.turns_active += 1
-                fighter.fake_out_ready = False
+                fighter.first_turn = max(0, fighter.first_turn - 1)
         self._after_faints()
 
     def _move_order(self, movers: list[int], actions: dict[int, int]) -> list[int]:
@@ -435,12 +462,18 @@ class Battle:
             move = self._move_for(fighter, slot)
             claw = int(fighter.item == ITEM_QUICK_CLAW and self.rng.randrange(100) < 20)
             keys[side] = (move.priority, claw, self._speed(side), self.rng.random())
-            if move.effect == 170:  # Focus Punch: tightens its focus before anyone moves
-                fighter.focus_punch = True
         return sorted(movers, key=lambda side: keys[side], reverse=True)
 
+    def _struggles(self, fighter: Fighter) -> bool:
+        """No selectable move (no PP, or what is left is disabled/taunted): Struggle."""
+        if fighter.recharge or fighter.charging >= 0 or fighter.rampage or fighter.rollout:
+            return False
+        if fighter.encore and fighter.last_slot >= 0 and fighter.pp[fighter.last_slot] > 0:
+            return False
+        return not any(self._usable(fighter, slot) for slot in range(len(fighter.move_ids)))
+
     def _move_for(self, fighter: Fighter, slot: int) -> MoveData:
-        if not any(pp > 0 for pp in fighter.pp) and fighter.charging < 0 and not fighter.rampage:
+        if self._struggles(fighter):
             return self.dex.moves[MOVE_STRUGGLE]
         return self.dex.moves[fighter.move_ids[slot]]
 
@@ -485,6 +518,8 @@ class Battle:
         entering.reset_volatile()
         if entering.status & TOXIC:
             entering.toxic_n = 1
+        # A mid-turn switch keeps the Fake Out window open through the next turn.
+        entering.first_turn = 1 if self._replacing else 2
         self._emit(("switch", side, index, entering.spec.species))
         if own.spikes and 2 not in entering.types and entering.ability != A["LEVITATE"]:
             self._hurt(side, max(1, entering.max_hp // (8, 6, 4)[own.spikes - 1]), "spikes")
@@ -573,7 +608,8 @@ class Battle:
         if fighter.flinched:
             self._emit(("flinched", side))
             return
-        if fighter.focus_punch and fighter.hit_by_target and move.effect == 170:
+        if move.effect == 170 and fighter.hit_by_target and not struggling:
+            # Focus Punch: the user lost its focus when it was hit earlier this turn.
             self._consume_pp(side, slot, move)
             self._emit(("fail", side, move.move_id))
             return
@@ -586,8 +622,10 @@ class Battle:
                 return
             slot = self.rng.choice(choices)
             move = self.dex.moves[fighter.move_ids[slot]]
-        elif fighter.charging < 0 and not fighter.rampage and not struggling:
+        elif fighter.charging < 0 and not fighter.rampage and not fighter.rollout and not struggling:
             self._consume_pp(side, slot, move)
+        if move.effect != 119:
+            fighter.fury_cutter = 0
         fighter.last_slot = slot
         if fighter.item == ITEM_CHOICE_BAND and fighter.choice_slot < 0 and not struggling:
             fighter.choice_slot = slot
@@ -595,7 +633,37 @@ class Battle:
         if fighter.taunt and not move.damaging and not struggling:
             self._emit(("fail", side, move.move_id))
             return
+        self._landed = False
         self._execute(side, slot, move, moved_last, struggling)
+        if not struggling:
+            self._after_move(side, fighter, slot, move.effect)
+
+    def _after_move(self, side: int, fighter: Fighter, slot: int, effect: int) -> None:
+        """Multi-turn bookkeeping that depends on whether the move connected."""
+        landed = self._landed and fighter.alive and self.sides[side].fighter is fighter
+        if effect == 27:  # Thrash / Outrage / Petal Dance: 2-3 turns, then confusion; a miss ends it
+            if not landed:
+                fighter.rampage = False
+                fighter.lock_slot = -1
+                return
+            if not fighter.rampage:
+                fighter.rampage = True
+                fighter.lock_slot = slot
+                fighter.lock_turns = self.rng.randrange(2, 4)
+            fighter.lock_turns -= 1
+            if fighter.lock_turns <= 0:
+                fighter.rampage = False
+                fighter.lock_slot = -1
+                self._confuse(side, side)
+        elif effect == 117:  # Rollout / Ice Ball: five turns, doubling; a miss ends it
+            if landed and fighter.rollout < 4:
+                fighter.rollout += 1
+                fighter.lock_slot = slot
+            else:
+                fighter.rollout = 0
+                fighter.lock_slot = -1
+        elif effect == 119:  # Fury Cutter doubles on every consecutive hit
+            fighter.fury_cutter = min(4, fighter.fury_cutter + 1) if landed else 0
 
     def _consume_pp(self, side: int, slot: int, move: MoveData) -> None:
         fighter = self.sides[side].fighter
@@ -606,8 +674,9 @@ class Battle:
 
     def _clear_charge(self, fighter: Fighter) -> None:
         fighter.charging = -1
-        fighter.invulnerable = False
+        fighter.invulnerable = 0
         fighter.rampage = False
+        fighter.rollout = 0
         fighter.lock_slot = -1
 
     def _execute(self, side: int, slot: int, move: MoveData, moved_last: bool, struggling: bool) -> None:
@@ -626,15 +695,18 @@ class Battle:
             if not (effect == 151 and self._weather_active() == "sun"):
                 fighter.charging = slot
                 fighter.lock_slot = slot
-                fighter.invulnerable = effect == 155
+                fighter.invulnerable = move.move_id if effect == 155 else 0
                 if effect == 145:
                     self._boost(side, DEF, 1)
                 self._emit(("charging", side, move.move_id))
                 return
         if fighter.charging >= 0:
             fighter.charging = -1
-            fighter.invulnerable = False
+            fighter.invulnerable = 0
             fighter.lock_slot = -1
+        if effect == 158 and not fighter.first_turn:  # Fake Out only works on the user's first turn
+            self._emit(("fail", side, move.move_id))
+            return
         if move.target == TARGET_USER or (not move.damaging and effect in (
                 10, 11, 12, 13, 14, 15, 16, 50, 51, 52, 53, 54, 55, 56, 156, 108, 206, 208, 211, 212, 32, 157, 132,
                 133, 134, 37, 79, 111, 116, 35, 65, 112, 115, 136, 137, 164, 124, 46, 47, 142, 179, 181, 193, 102)):
@@ -647,9 +719,13 @@ class Battle:
             self._emit(("protected", foe_side))
             if effect in (45,):  # Jump Kick crash
                 self._hurt(side, max(1, fighter.max_hp // 2) // 2, "crash")
+            if effect == 7:  # Explosion still knocks out its user
+                self._self_faint(side)
             return
-        if foe.invulnerable and not (move.move_id in (16, 87, 239) or move.move_id in (89, 222)):
+        if foe.invulnerable and move.move_id not in _SEMI_REACH.get(foe.invulnerable, (frozenset(), frozenset()))[0]:
             self._emit(("miss", side, move.move_id))
+            if effect == 7:
+                self._self_faint(side)
             return
         if move.move_id in SOUND_MOVES and foe.ability == A["SOUNDPROOF"]:
             self._emit(("ability", foe_side, A["SOUNDPROOF"]))
@@ -735,7 +811,13 @@ class Battle:
             power *= 2
         elif effect == 185 and fighter.hit_by_target:
             power *= 2
-        elif effect == 149 and foe.invulnerable:
+        elif effect == 117:  # Rollout / Ice Ball
+            power <<= fighter.rollout + int(fighter.defense_curl)
+        elif effect == 119:  # Fury Cutter
+            power <<= fighter.fury_cutter
+        elif effect == 128 and self._pursuit:
+            power *= 2
+        if foe.invulnerable and move.move_id in _SEMI_REACH.get(foe.invulnerable, (frozenset(), frozenset()))[1]:
             power *= 2
         return move_type, power
 
@@ -762,7 +844,9 @@ class Battle:
             power=power, move_type=move_type, type_modifiers=modifiers,
             stab=not typeless and move_type in attacker.types,
             attack_stage=attacker.stages[SPA if special else ATK], defense_stage=defender.stages[SPD if special else DEF],
-            attacker_ability=attacker.ability, defender_ability=defender.ability,
+            attacker_ability=attacker.ability,
+            # Typeless damage (Struggle) goes through Wonder Guard.
+            defender_ability=0 if typeless and defender.ability == A["WONDER_GUARD"] else defender.ability,
             attacker_item=attacker.item, defender_item=defender.item,
             attacker_species=attacker.spec.species, defender_species=defender.spec.species,
             attacker_status=attacker.status, defender_status=defender.status,
@@ -852,7 +936,8 @@ class Battle:
                 if effect == 7:
                     self._self_faint(side)
                 return
-            if defender.ability == A["WONDER_GUARD"] and category <= 1 and fixed is None and move_type != TYPE_MYSTERY:
+            if (defender.ability == A["WONDER_GUARD"] and category <= 1 and move_type != TYPE_MYSTERY
+                    and move.move_id != MOVE_STRUGGLE):
                 self._emit(("ability", foe_side, A["WONDER_GUARD"]))
                 self._emit(("noeffect", foe_side, move_type, side, defender.spec.species))
                 return
@@ -891,6 +976,8 @@ class Battle:
                 break
         if hits > 1:
             self._emit(("multihit", side, hits))
+        if total:
+            self._landed = True
         if total and attacker.alive:
             self._after_damage(side, move, effect, total, moved_last, struggling, category)
         if effect == 7:
@@ -957,16 +1044,6 @@ class Battle:
             self._emit(("knocked_off", foe_side))
         elif effect == 171 and defender.status & PARALYSIS:
             defender.status &= ~PARALYSIS
-        elif effect == 27:
-            if not attacker.rampage:
-                attacker.rampage = True
-                attacker.lock_slot = attacker.last_slot
-                attacker.lock_turns = self.rng.randrange(2, 4)
-            attacker.lock_turns -= 1
-            if attacker.lock_turns <= 0:
-                attacker.rampage = False
-                attacker.lock_slot = -1
-                self._confuse(side, side)
         elif effect == 42 and defender.alive and not defender.trap_turns:
             defender.trap_turns = self.rng.randrange(2, 6)
             self._emit(("trapped", foe_side))
@@ -980,8 +1057,6 @@ class Battle:
         if defender.substitute and effect not in (138, 139, 140):
             chance = 0
         roll = self.rng.randrange(100) < chance if chance else effect in (158,)
-        if effect == 158 and not attacker.turns_active:
-            roll = True
         flinch_kings = attacker.item == ITEM_KINGS_ROCK and move.flags & 32 and self.rng.randrange(100) < 10
         if (roll and effect in (31, 146, 150, 158) or flinch_kings) and not moved_last \
                 and defender.ability != A["INNER_FOCUS"]:
@@ -1108,6 +1183,8 @@ class Battle:
         if effect in _STAT_UP:
             stat, amount = _STAT_UP[effect]
             success = self._boost(side, stat, amount)
+            if effect == 156:
+                fighter.defense_curl = True  # doubles Rollout / Ice Ball
         elif effect in _MULTI_BOOST:
             success = any([self._boost(side, stat, amount) for stat, amount in _MULTI_BOOST[effect]])
         elif effect in _HEAL_HALF:
@@ -1134,7 +1211,7 @@ class Battle:
                 self._emit(("substitute", side))
         elif effect in (111, 116):
             # Gen 3: fails when used last in the turn; each consecutive use halves the odds.
-            if self.rng.random() < 1 / (2 ** min(fighter.protect_streak, 8)) and not moved_last:
+            if self.rng.random() < 1 / (2 ** min(fighter.protect_streak, 3)) and not moved_last:
                 fighter.protected = effect == 111
                 fighter.enduring = effect == 116
                 fighter.protect_streak += 1

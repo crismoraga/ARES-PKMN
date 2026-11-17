@@ -4,6 +4,25 @@ ARES-PKMN es un agente de investigación para Pokémon FireRed y Emerald de terc
 
 Esta guía permite preparar Windows desde un clon limpio, ejecutar una campaña y observarla junto con el entrenamiento. El instalador usa Python 3.12 aislado en `.venv`; no instala paquetes en el Python global. La instalación descarga dependencias y fuentes fijadas, por lo que necesita Internet.
 
+## Demostración Rápida en Convención (1-Click en cualquier PC)
+
+Para presentar el proyecto de inmediato en una convención o feria tecnológica en cualquier PC con Windows, Linux o macOS (con o sin ROMs físicas):
+
+- **En Windows**: Haz doble clic en `DEMO.bat` (o ejecuta `.\DEMO.bat` desde CMD / PowerShell).
+- **En Linux / macOS**: Ejecuta `./demo.sh` (con permisos de ejecución automáticos).
+
+El lanzador interactivo:
+1. Comprueba o crea automáticamente el entorno virtual (`.venv`) e instala dependencias si hace falta (`setup.bat` / `setup.sh`).
+2. Inicia en segundo plano la **Estación de Monitoreo Web** en `http://127.0.0.1:8765/`.
+3. Inicia la arena coevolutiva en vivo **ARES-ADVERSARIAL** (ROJO vs AZUL combatiendo, aprendiendo lecciones contrafactuales y actualizando el mapa de calor).
+4. Abre de inmediato el navegador en la interfaz visual (`http://127.0.0.1:8765/stadium`).
+5. Incluye un menú interactivo para alternar entre el estadio adversarial, campañas en emulador, el visor nativo pygame o la verificación formal con Z3.
+
+Comandos universales multiplataforma disponibles:
+- **Windows (CMD / PowerShell)**: `ARES.bat [dashboard|stadium|watch|run|resume|status|verify|setup]`
+- **Linux / macOS (Bash)**: `./ares.sh [dashboard|stadium|watch|run|resume|status|verify|setup]`
+- **Instalación autónoma**: `setup.bat` (Windows) o `./setup.sh` (Linux / macOS).
+
 ## Estado actual y límites de la evidencia
 
 La verificación incluye regresiones de evolución/aprendizaje, captura/Pokédex, paredes direccionales de cuevas, persecución de NPCs, ataques sin efecto y ciclos sin avance de historia. Los resultados del checkout se detallan en [estado y evidencia](docs/ESTADO_Y_EVIDENCIA.md). La ruta funcional de referencia usa CPU; DirectML debe superar sus propias comprobaciones antes de seleccionarse.

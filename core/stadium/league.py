@@ -45,8 +45,8 @@ from .evaluation import Evaluator, SideSpec, Solution, policy_for
 from .game_qd import (Bootstrap, GameConfig, GrowingArchive, Selection, SpaceOps, Variant, all_elites, mtmb_me,
                       select_tasks)
 from .knowledge import SideKnowledge, exchange
-from .learning import (DeepLearner, Lesson, StadiumEnvironment, apply_lessons, counterfactual_lessons,
-                       elite_imitation_samples)
+from .deep import DeepLearner, StadiumEnvironment, elite_imitation_samples
+from .learning import Lesson, apply_lessons, counterfactual_lessons
 from .match import BEHAVIOR_NAMES, play
 from .metrics import OnlineElo, side_report
 from .narration import narrate

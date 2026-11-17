@@ -27,6 +27,7 @@ from .engine import MonSpec
 
 CAMPAIGN_ROOT = ROOT / "artifacts" / "campaigns" / "native"
 BANK_PATH = ROOT / "artifacts" / "stadium" / "team_bank.json"
+SHIPPED_BANK_PATH = ROOT / "data" / "stadium_teams.json"  # snapshot of real campaign teams, for PCs without saves
 
 
 @dataclass(frozen=True)
@@ -133,7 +134,8 @@ def gen3_stats(dex: Dex, species: int, level: int, ivs: Sequence[int], evs: Sequ
     for index in range(6):
         core = (2 * base[index] + ivs[index] + evs[index] // 4) * level // 100
         if index == 0:
-            values.append(1 if species == 292 else core + level + 10)  # Shedinja always has 1 HP
+            # Shedinja always has 1 HP (internal Gen-3 ids differ from national numbers: match by name).
+            values.append(1 if dex.species[species].name == "SHEDINJA" else core + level + 10)
             continue
         stat = core + 5
         if nature // 5 != nature % 5:
@@ -241,8 +243,14 @@ def harvest(game: Game, dex: Dex, root: Path = CAMPAIGN_ROOT, limit: int | None 
 
 
 def load_bank(dex: Dex, refresh: bool = False, path: Path = BANK_PATH,
-              games: Iterable[Game] = ("firered", "emerald")) -> TeamBank:
-    """Cached bank; ``refresh`` re-reads the checkpoints (new campaign progress)."""
+              games: Iterable[Game] = ("firered", "emerald"), shipped: Path = SHIPPED_BANK_PATH) -> TeamBank:
+    """Teams for both sides, from the best source this machine has.
+
+    1. the cached harvest (``refresh`` re-reads the checkpoints: new campaign progress);
+    2. a fresh read-only harvest of the campaign checkpoints (needs the ROMs and the native core);
+    3. the shipped snapshot of the real campaign teams (any PC, no ROM, no saves);
+    4. starter-line rosters, as a last resort.
+    """
     if path.is_file() and not refresh:
         try:
             return TeamBank.from_json(json.loads(path.read_text(encoding="utf-8")))
@@ -250,22 +258,41 @@ def load_bank(dex: Dex, refresh: bool = False, path: Path = BANK_PATH,
             pass
     bank = TeamBank()
     for game in games:
-        roster, parties, loaded = harvest(game, dex)
+        try:
+            roster, parties, loaded = harvest(game, dex)
+        except (OSError, ValueError, RuntimeError, ImportError):
+            continue  # no ROM, no native core or unreadable saves on this machine
         if roster:
             bank.rosters[game], bank.parties[game], bank.sources[game] = roster, parties, loaded
-    if not bank.rosters:
-        bank = fallback_bank(dex)
-    bank.save(path)
-    return bank
+    if len(bank.rosters) == len(tuple(games)):
+        bank.save(path)
+        return bank
+    if shipped.is_file():
+        try:
+            return TeamBank.from_json(json.loads(shipped.read_text(encoding="utf-8")))
+        except (ValueError, KeyError, OSError):
+            pass
+    return fallback_bank(dex)
+
+
+def export_bank(dex: Dex, path: Path = SHIPPED_BANK_PATH) -> Path:
+    """Publish the current real teams as the snapshot other PCs will use."""
+    bank = load_bank(dex)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(bank.to_json(), separators=(",", ":")), encoding="utf-8")
+    return path
 
 
 def fallback_bank(dex: Dex) -> TeamBank:
-    """Starter-line rosters for machines without campaign checkpoints (tests, CI)."""
-    lines = {"firered": (3, 18, 26, 34, 65, 130, 143, 59), "emerald": (260, 254, 257, 282, 334, 306, 310, 350)}
+    """Starter-line rosters for machines without campaign teams at all (tests, CI)."""
+    lines = {"firered": ("VENUSAUR", "PIDGEOT", "RAICHU", "NIDOKING", "ALAKAZAM", "GYARADOS", "SNORLAX", "ARCANINE"),
+             "emerald": ("SWAMPERT", "SCEPTILE", "BLAZIKEN", "GARDEVOIR", "ALTARIA", "AGGRON", "MANECTRIC", "MILOTIC")}
+    by_name = {data.name: data.species_id for data in dex.species}
     bank = TeamBank()
-    for game, species_ids in lines.items():
+    for game, names in lines.items():
         roster: list[RosterMon] = []
-        for index, species in enumerate(species_ids):
+        for index, name in enumerate(names):
+            species = by_name[name]
             level = 45
             moves = tuple(move for move in dex.learnable(species, level) if dex.moves[move].pp)[-4:]
             ivs = (20, 20, 20, 20, 20, 20)

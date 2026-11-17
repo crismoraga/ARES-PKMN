@@ -26,7 +26,8 @@ from core.stadium.features import OPTION_FEATURES, net_observation, option_featu
 from core.stadium.game_qd import (GameConfig, GenerationReport, GrowingArchive, SpaceOps, Variant, budget_matched,
                                   pareto_select, ranking_vectors, run_game, select_tasks)
 from core.stadium.knowledge import SideKnowledge, exchange
-from core.stadium.learning import (DeepLearner, StadiumEnvironment, apply_lessons, counterfactual_lessons,
+from core.stadium.deep import DeepLearner, StadiumEnvironment
+from core.stadium.learning import (apply_lessons, counterfactual_lessons,
                                    train_mlp)
 from core.stadium.match import BEHAVIOR_DIM, fitness_from, play
 from core.stadium.metrics import elo_ratings, holm_bonferroni, min_counter_set, side_report

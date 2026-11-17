@@ -1,4 +1,9 @@
-"""Immutable battle data tables, read once from a hash-verified ROM.
+"""Immutable battle data tables of one Gen-3 game.
+
+The tables come from the hash-verified ROM when it is present, or from the
+snapshot ``data/stadium_dex.json`` (exported from that same ROM) when it is
+not, so the stadium runs on machines that have no ROM at all. Both sources
+produce identical tables (a test compares them).
 
 The engine never asks the ROM during a battle: every lookup is a tuple index.
 Type effectiveness keeps the native table order, because Gen-3 applies each
@@ -6,9 +11,12 @@ matching modifier separately with truncation (the order changes damage).
 """
 from __future__ import annotations
 
+import json
+import struct
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 from core.game_data import ROM_NAMES, ROOT, RomCatalog
 
@@ -55,14 +63,28 @@ class SpeciesData:
     abilities: tuple[int, int]
 
 
-class Dex:
-    """Species, moves and the ordered type table of one Gen-3 ROM."""
+SNAPSHOT_PATH = ROOT / "data" / "stadium_dex.json"
+Learnset = tuple[tuple[int, int], ...]
+Evolutions = tuple[tuple[int, int, int], ...]
 
-    def __init__(self, catalog: RomCatalog) -> None:
-        self.game = catalog.game
-        self.moves: tuple[MoveData, ...] = tuple(self._move(catalog, index) for index in range(catalog.move_count))
-        self.species: tuple[SpeciesData, ...] = tuple(self._species(catalog, index)
-                                                      for index in range(catalog.species_count))
+
+class Dex:
+    """Species, moves, ordered type table, evolutions and level-up learnsets."""
+
+    def __init__(self, game: str, moves: tuple[MoveData, ...], species: tuple[SpeciesData, ...],
+                 type_entries: tuple[tuple[int, int, int], ...], evolutions: tuple[Evolutions, ...],
+                 learnsets: tuple[Learnset, ...], source: str) -> None:
+        self.game, self.moves, self.species = game, moves, species
+        self.type_entries, self.evolutions, self.learnsets = type_entries, evolutions, learnsets
+        self.source = source  # "rom" or "snapshot"
+        self._ordered: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
+        self.level_up: dict[int, tuple[int, ...]] = {}
+
+    # ------------------------------------------------------------ sources
+    @classmethod
+    def from_catalog(cls, catalog: RomCatalog) -> Dex:
+        moves = tuple(cls._move(catalog, index) for index in range(catalog.move_count))
+        species = tuple(cls._species(catalog, index) for index in range(catalog.species_count))
         symbol = catalog.symbols["gTypeEffectiveness"]
         raw = catalog.read(symbol.address, symbol.size)
         entries: list[tuple[int, int, int]] = []
@@ -73,24 +95,60 @@ class Dex:
             if attack == 0xFE:  # TYPE_FORESIGHT separator: Ghost immunities follow normally
                 continue
             entries.append((attack, defense, factor))
-        self.type_entries: tuple[tuple[int, int, int], ...] = tuple(entries)
-        self._ordered: dict[tuple[int, int, int], tuple[tuple[int, int], ...]] = {}
         evolution = catalog.symbols["gEvolutionTable"]
         table = catalog.read(evolution.address, evolution.size)
-        rows: list[tuple[tuple[int, int, int], ...]] = []
-        for species in range(evolution.size // 40):
-            entries = []
+        rows: list[Evolutions] = []
+        for index in range(evolution.size // 40):
+            methods = []
             for slot in range(5):
-                offset = species * 40 + slot * 8
-                method = int.from_bytes(table[offset:offset + 2], "little")
-                param = int.from_bytes(table[offset + 2:offset + 4], "little")
-                target = int.from_bytes(table[offset + 4:offset + 6], "little")
+                method, param, target = struct.unpack_from("<HHH", table, index * 40 + slot * 8)
                 if method:
-                    entries.append((method, param, target))
-            rows.append(tuple(entries))
-        self.evolutions: tuple[tuple[tuple[int, int, int], ...], ...] = tuple(rows)
-        self.level_up: dict[int, tuple[int, ...]] = {}
-        self._catalog = catalog
+                    methods.append((int(method), int(param), int(target)))
+            rows.append(tuple(methods))
+        pointers = catalog.symbols["gLevelUpLearnsets"].address
+        learnsets: list[Learnset] = []
+        for index in range(catalog.species_count):
+            learnset: list[tuple[int, int]] = []
+            if species[index].name != "?":
+                try:
+                    pointer = struct.unpack("<I", catalog.read(pointers + 4 * index, 4))[0]
+                    for position in range(256):
+                        entry = struct.unpack("<H", catalog.read(pointer + 2 * position, 2))[0]
+                        if entry == 0xFFFF:
+                            break
+                        learnset.append((entry >> 9, entry & 0x1FF))
+                except ValueError:
+                    learnset = []
+            learnsets.append(tuple(learnset))
+        return cls(catalog.game, moves, species, tuple(entries), tuple(rows), tuple(learnsets), "rom")
+
+    def to_snapshot(self) -> dict[str, Any]:
+        """Plain tables (no ROM code or assets), enough to run the stadium without the ROM."""
+        return {
+            "version": 1, "game": self.game,
+            "moves": [[m.name, m.effect, m.power, m.move_type, m.accuracy, m.pp, m.chance, m.target, m.priority,
+                       m.flags] for m in self.moves],
+            "species": [[d.name, list(d.base_stats), list(d.types), list(d.abilities)] for d in self.species],
+            "types": [list(entry) for entry in self.type_entries],
+            "evolutions": [[list(method) for method in row] for row in self.evolutions],
+            "learnsets": [[list(entry) for entry in row] for row in self.learnsets],
+        }
+
+    @classmethod
+    def from_snapshot(cls, raw: dict[str, Any]) -> Dex:
+        if raw.get("version") != 1:
+            raise ValueError("unsupported stadium dex snapshot")
+        moves = tuple(MoveData(index, str(row[0]), *(int(value) for value in row[1:]))
+                      for index, row in enumerate(raw["moves"]))
+        species = []
+        for index, (name, stats, types, abilities) in enumerate(raw["species"]):
+            species.append(SpeciesData(index, str(name), (int(stats[0]), int(stats[1]), int(stats[2]), int(stats[3]),
+                                                          int(stats[4]), int(stats[5])),
+                                       (int(types[0]), int(types[1])), (int(abilities[0]), int(abilities[1]))))
+        types_table = tuple((int(a), int(b), int(c)) for a, b, c in raw["types"])
+        evolutions = tuple(tuple((int(a), int(b), int(c)) for a, b, c in row) for row in raw["evolutions"])
+        learnsets = tuple(tuple((int(level), int(move)) for level, move in row) for row in raw["learnsets"])
+        return cls(str(raw["game"]), moves, tuple(species), types_table, evolutions, learnsets, "snapshot")
 
     @staticmethod
     def _move(catalog: RomCatalog, move_id: int) -> MoveData:
@@ -108,6 +166,7 @@ class Dex:
             return SpeciesData(species_id, "?", (1, 1, 1, 1, 1, 1), (0, 0), (0, 0))
         return SpeciesData(species_id, info.name, info.base_stats, info.types, info.abilities)
 
+    # ------------------------------------------------------------ lookups
     def modifiers(self, attack_type: int, defender_types: tuple[int, int]) -> tuple[tuple[int, int], ...]:
         """Native-order (numerator, 10) modifiers; empty means neutral."""
         key = (attack_type, defender_types[0], defender_types[1])
@@ -160,22 +219,55 @@ class Dex:
         key = species_id * 128 + level
         cached = self.level_up.get(key)
         if cached is None:
-            try:
-                cached = tuple(self._catalog.level_up_moves(species_id, level))
-            except (ValueError, KeyError):
-                cached = ()
+            result: list[int] = []
+            for learnt_at, move in self.learnsets[species_id] if 0 <= species_id < len(self.learnsets) else ():
+                if learnt_at <= level:
+                    if move in result:
+                        result.remove(move)
+                    result.append(move)
+            cached = tuple(result)
             self.level_up[key] = cached
         return cached
 
 
-def available_game() -> Game:
+def rom_game() -> Game | None:
     """Emerald is preferred (it is a superset for battle data); FireRed otherwise."""
-    for game in ("emerald", "firered"):
-        if (ROOT.parent / ROM_NAMES[game]).is_file():
-            return game
-    raise FileNotFoundError("The stadium needs a FireRed or Emerald ROM next to the project folder")
+    if (ROOT.parent / ROM_NAMES["emerald"]).is_file():
+        return "emerald"
+    if (ROOT.parent / ROM_NAMES["firered"]).is_file():
+        return "firered"
+    return None
 
 
-@lru_cache(maxsize=2)
-def load_dex(game: Game | None = None) -> Dex:
-    return Dex(RomCatalog(game or available_game()))
+def available_game() -> Game:
+    game = rom_game()
+    if game is not None:
+        return game
+    if SNAPSHOT_PATH.is_file():
+        return "emerald"
+    raise FileNotFoundError("The stadium needs data/stadium_dex.json or a FireRed/Emerald ROM next to the project")
+
+
+def export_snapshot(path: Path = SNAPSHOT_PATH) -> Path:
+    """Write the ROM-free data file (needs the ROM once, on the machine that prepares the demo)."""
+    game = rom_game()
+    if game is None:
+        raise FileNotFoundError("Exporting the stadium dex needs the ROM")
+    dex = Dex.from_catalog(RomCatalog(game))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(dex.to_snapshot(), separators=(",", ":")), encoding="utf-8")
+    return path
+
+
+@lru_cache(maxsize=4)
+def load_dex(game: Game | None = None, prefer_snapshot: bool = False) -> Dex:
+    """The ROM when present; otherwise the shipped snapshot."""
+    chosen = game if game is not None else rom_game()
+    if chosen is not None and not prefer_snapshot and (ROOT.parent / ROM_NAMES[chosen]).is_file():
+        try:
+            return Dex.from_catalog(RomCatalog(chosen))
+        except (ValueError, OSError):
+            pass  # unsupported ROM revision: fall back to the snapshot
+    if SNAPSHOT_PATH.is_file():
+        return Dex.from_snapshot(json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8")))
+    raise FileNotFoundError("The stadium needs data/stadium_dex.json or a FireRed/Emerald ROM next to the project")
