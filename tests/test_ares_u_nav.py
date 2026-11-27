@@ -187,8 +187,13 @@ def test_preprocessor_grayscale_from_packed_xbgr() -> None:
     assert out.shape == (84, 84) and out.dtype == np.uint8 and (out == 255).all()
     assert (pre(red) == round(0.299 * 255)).all() and (pre(blue) == round(0.114 * 255)).all()
     assert FramePreprocessor(72, 80)(white).shape == (72, 80)
+    # Any console screen maps to the same observation shape (GB/GBC 160x144, NDS 256x192).
+    for shape in ((144, 160), (192, 256)):
+        assert (pre(np.full(shape, 0x00FFFFFF, dtype=np.uint32)) == 255).all()
     with pytest.raises(ValueError):
-        pre(np.zeros((84, 84), dtype=np.uint32))
+        pre(np.zeros(84, dtype=np.uint32))
+    with pytest.raises(ValueError):
+        pre(np.zeros((4, 4), dtype=np.uint32))
 
 
 def test_observation_shape_stack_and_dtype() -> None:

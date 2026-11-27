@@ -482,6 +482,18 @@ def _initialise(model: ActorCritic, init: str) -> str:
         checkpoint = torch.load(path, map_location="cpu", weights_only=True)
         model.load_state_dict(checkpoint["model"])
         return f"actor-critic from {path} (RND and normalisers reinitialised)"
+    if kind == "encoder":
+        # Representation transfer: the visual encoder of a trained actor-critic with fresh policy and
+        # value heads (near-uniform policy, i.e. maximal entropy), to avoid the plasticity/entropy loss
+        # observed when the whole pretrained policy is fine-tuned.
+        checkpoint = torch.load(path, map_location="cpu", weights_only=True)
+        prefix = "encoder."
+        encoder_state = {key[len(prefix):]: value for key, value in checkpoint["model"].items()
+                         if key.startswith(prefix)}
+        if not encoder_state:
+            raise ValueError(f"{path} has no encoder weights")
+        model.encoder.load_state_dict(encoder_state)
+        return f"encoder from actor-critic {path}; policy/value heads, RND and normalisers reinitialised"
     raise ValueError(f"Unknown init {init!r}")
 
 
@@ -853,6 +865,7 @@ def evaluate(config: EvalConfig) -> dict[str, Any]:
     n_envs = min(config.num_envs, config.episodes)
     episodes_cells: list[int] = []
     episodes_maps: list[int] = []
+    episodes_screens: list[int] = []
     curves: list[list[int]] = []
     current: list[list[int]] = [[] for _ in range(n_envs)]
     action_counts = np.zeros(NUM_ACTIONS, dtype=np.int64)
@@ -880,6 +893,7 @@ def evaluate(config: EvalConfig) -> dict[str, Any]:
                 if dones[i]:
                     episodes_cells.append(int(info["final_episode_cells"]))
                     episodes_maps.append(int(info["final_episode_maps"]))
+                    episodes_screens.append(int(info.get("final_episode_screens", 0)))
                     curves.append(current[i])
                     current[i] = []
                     if started < config.episodes:
@@ -894,6 +908,8 @@ def evaluate(config: EvalConfig) -> dict[str, Any]:
         "cells": episodes_cells, "maps": episodes_maps,
         "cells_mean": float(np.mean(episodes_cells)), "cells_std": float(np.std(episodes_cells)),
         "maps_mean": float(np.mean(episodes_maps)), "battle_fraction": battle / max(1, steps),
+        "screens": episodes_screens, "screens_mean": float(np.mean(episodes_screens)),
+        "screens_std": float(np.std(episodes_screens)),
         "action_hist": (action_counts / max(1, steps)).round(4).tolist(),
         "curve_steps": [config.curve_every * (k + 1) for k in range(length)],
         "curve_mean": curve.mean(axis=0).tolist(), "curve_std": curve.std(axis=0).tolist(),

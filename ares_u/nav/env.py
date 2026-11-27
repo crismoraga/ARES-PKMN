@@ -19,6 +19,7 @@ from typing import Any, Protocol
 import numpy as np
 from numpy.typing import NDArray
 
+from ares_u.gal.games import GAMES as GAL_GAMES
 from core.bridge.ffi_mgba import (
     KEY_A, KEY_B, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_SELECT, KEY_START, KEY_UP,
 )
@@ -39,7 +40,12 @@ DEFAULT_ROMS: dict[str, Path] = {
 }
 DEFAULT_DLL = ROOT / "native" / "build" / "ares_mgba.dll"
 NAV_ARTIFACTS = ROOT / "artifacts" / "ares_u" / "nav"
-GAMES: tuple[str, ...] = ("firered", "emerald")
+# FireRed/Emerald keep the original native bridge (E2); every other game of the ARES-U Game
+# Abstraction Layer (ares_u.gal: GB, GBC, NDS) uses its multi-console backends.
+NATIVE_GAMES: tuple[str, ...] = ("firered", "emerald")
+GAMES: tuple[str, ...] = NATIVE_GAMES + tuple(key for key in GAL_GAMES if key not in NATIVE_GAMES)
+for _key, _spec in GAL_GAMES.items():
+    DEFAULT_ROMS.setdefault(_key, _spec.rom)
 
 Cell = tuple[int, int, int, int]  # (map_group, map_num, x, y)
 UInt8Array = NDArray[np.uint8]
@@ -123,22 +129,34 @@ def area_matrix(n_in: int, n_out: int) -> Float32Array:
 
 
 class FramePreprocessor:
-    """Convert a packed little-endian XBGR framebuffer into an area-resampled grayscale image."""
+    """Convert a packed little-endian XBGR framebuffer into an area-resampled grayscale image.
+
+    Any console resolution is accepted (GB/GBC 160x144, GBA 240x160, NDS screen 256x192); the
+    resampling matrices are built once per input shape, so every game yields the same obs shape.
+    """
 
     def __init__(self, height: int, width: int) -> None:
         self.height, self.width = height, width
-        self._rows = area_matrix(GBA_HEIGHT, height)
-        self._cols_t = np.ascontiguousarray(area_matrix(GBA_WIDTH, width).T)
+        self._matrices: dict[tuple[int, int], tuple[Float32Array, Float32Array]] = {}
+        self._matrices_for((GBA_HEIGHT, GBA_WIDTH))
+
+    def _matrices_for(self, shape: tuple[int, int]) -> tuple[Float32Array, Float32Array]:
+        if shape not in self._matrices:
+            rows = area_matrix(shape[0], self.height)
+            cols_t = np.ascontiguousarray(area_matrix(shape[1], self.width).T)
+            self._matrices[shape] = (rows, cols_t)
+        return self._matrices[shape]
 
     def __call__(self, framebuffer: NDArray[np.uint32]) -> UInt8Array:
-        if framebuffer.shape != (GBA_HEIGHT, GBA_WIDTH):
-            raise ValueError(f"Framebuffer shape {framebuffer.shape} is not {(GBA_HEIGHT, GBA_WIDTH)}")
+        if framebuffer.ndim != 2 or min(framebuffer.shape) < 8:
+            raise ValueError(f"Framebuffer shape {framebuffer.shape} is not a 2-D screen")
+        rows, cols_t = self._matrices_for((int(framebuffer.shape[0]), int(framebuffer.shape[1])))
         packed = framebuffer.astype(np.uint32, copy=False)
         red = (packed & 0xFF).astype(np.float32)
         green = ((packed >> 8) & 0xFF).astype(np.float32)
         blue = ((packed >> 16) & 0xFF).astype(np.float32)
         gray = 0.299 * red + 0.587 * green + 0.114 * blue
-        resized = self._rows @ gray @ self._cols_t
+        resized = rows @ gray @ cols_t
         image: UInt8Array = np.clip(np.rint(resized), 0, 255).astype(np.uint8)
         return image
 
@@ -183,7 +201,33 @@ def stable_cells(previous: Cell, samples: Sequence[Cell]) -> tuple[list[Cell], i
     return confirmed, unconfirmed
 
 
+SCREEN_GRID = 7      # 84x84 observation -> 7x7 blocks of 12x12 pixels
+SCREEN_LEVELS = 4    # gray levels per block after averaging
+
+
+def screen_key(frame: UInt8Array, grid: int = SCREEN_GRID, levels: int = SCREEN_LEVELS) -> bytes:
+    """Coarse signature of a screen for the universal pixel-coverage metric.
+
+    The observation frame is block-averaged to ``grid`` x ``grid`` and quantised to ``levels``
+    gray levels, so tile animations and single-sprite changes rarely create a new key while a new
+    camera position or a new room does. Used for *measurement* on games without a RAM adapter
+    (it is validated against the RAM cells on the games that have one); never a reward.
+    """
+    height, width = frame.shape
+    bh, bw = height // grid, width // grid
+    blocks = frame[: bh * grid, : bw * grid].reshape(grid, bh, grid, bw).mean(axis=(1, 3))
+    return bytes(np.minimum(levels - 1, (blocks * levels / 256.0).astype(np.int64)).astype(np.uint8).ravel())
+
+
 def native_bridge_factory(config: NavConfig) -> BridgeLike:
+    if config.game not in NATIVE_GAMES:
+        from dataclasses import replace as _replace
+
+        from ares_u.gal.backends import make_bridge
+        spec = GAL_GAMES[config.game]
+        if config.rom_path:
+            spec = _replace(spec, rom_name=str(Path(config.rom_path)))
+        return make_bridge(spec)
     from core.bridge.ffi_mgba import NativeLibMGBABridge
     return NativeLibMGBABridge(config.dll_path, config.resolved_rom(), is_emerald=config.game == "emerald")
 
@@ -208,6 +252,7 @@ class NavEnv:
         self._last_cell: Cell = (-1, -1, -1, -1)
         self._prev_sample: Cell = (-1, -1, -1, -1)
         self.cells = CellTracker()
+        self.screens: set[bytes] = set()
         self.steps = 0
         self.episodes = 0
         self.start_index = 0
@@ -247,6 +292,7 @@ class NavEnv:
         frame = self._frame()
         self._stack[:] = frame[None]
         self.cells = CellTracker()
+        self.screens = {screen_key(frame)}
         self._last_cell = (-1, -1, -1, -1)
         cell = self._read_cell()
         if cell[0] >= 0:  # the start state is a settled position, so a single read is trusted
@@ -275,6 +321,7 @@ class NavEnv:
         frame = self._frame()
         self._stack[:-1] = self._stack[1:]
         self._stack[-1] = frame
+        self.screens.add(screen_key(frame))
         cell = self._read_cell()
         samples.append(cell)
         step_cells, unconfirmed = stable_cells(self._prev_sample, samples)
@@ -286,7 +333,8 @@ class NavEnv:
         truncated = self.steps >= self.config.episode_steps
         info: dict[str, Any] = {
             "cell": cell, "step_cells": step_cells, "new_cell": new_cell, "episode_cells": len(self.cells),
-            "episode_maps": len(self.cells.maps()), "in_battle": self._in_battle(), "t": self.steps,
+            "episode_maps": len(self.cells.maps()), "episode_screens": len(self.screens),
+            "in_battle": self._in_battle(), "t": self.steps,
             "unconfirmed_samples": unconfirmed,
         }
         return self._stack.copy(), 0.0, False, truncated, info
@@ -309,6 +357,7 @@ def _worker(conn: Connection, config: NavConfig, seed: int) -> None:
                 if terminated or truncated:
                     info["final_episode_cells"] = len(env.cells)
                     info["final_episode_maps"] = len(env.cells.maps())
+                    info["final_episode_screens"] = len(env.screens)
                     obs = env.reset()
                 conn.send((obs, reward, terminated or truncated, info))
             elif command == "close":

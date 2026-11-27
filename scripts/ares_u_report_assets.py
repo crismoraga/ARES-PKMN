@@ -266,10 +266,60 @@ def e2_assets(run: Path, out: Path, figs: Path, macros: Macros) -> None:
             shutil.copy2(source, figs / f"e2_{name}")
 
 
+E3_GAMES = (("rojo", "Rojo", "GB", 1), ("cristal", "Cristal", "GBC", 2), ("platino", "Platino", "NDS", 4),
+            ("heartgold", "HeartGold", "NDS", 4), ("negro", "Negro", "NDS", 5), ("negro2", "Negro 2", "NDS", 5))
+E3_METHODS = ("random", "zero_shot", "finetune", "scratch", "encoder")
+
+
+def e3_assets(run: Path, out: Path, figs: Path, macros: Macros) -> None:
+    """Table: per game, unique screens (and RAM cells where an adapter exists) per method."""
+    summary = json.loads((run / "summary.json").read_text(encoding="utf-8"))
+    games: dict[str, Any] = summary.get("games", {})
+    lines = ["\\begin{tabular}{llccccc}", "\\toprule",
+             "Juego & Métrica & Aleatorio & Zero-shot & Ajuste & Desde cero & Encoder \\\\", "\\midrule"]
+    played = 0
+    for key, title, console, generation in E3_GAMES:
+        entry = games.get(key)
+        if not entry:
+            continue
+        played += 1
+        for metric, label in (("screens", "pant."), ("cells", "celdas")):
+            block = entry.get(metric)
+            if not block:
+                continue
+            cells = []
+            for method in E3_METHODS:
+                stats = block.get(method, {})
+                mean = stats.get("mean", float("nan"))
+                cells.append("--" if mean != mean else f"{mean:.0f}\\tiny{{$\\pm${stats.get('sd', 0.0):.0f}}}")
+                macros.add(macro_name("Ethree", key, metric, method), "--" if mean != mean else f"{mean:.0f}")
+            name = f"{title} ({console}, G{generation})" if metric == "screens" else ""
+            lines.append(f"{name} & {label} & " + " & ".join(cells) + " \\\\")
+            for test, values in entry.get(f"{metric}_tests", {}).items():
+                base = macro_name("Ethree", key, metric, test)
+                macros.add(base + "Diff", f"{values['diff']:+.0f}")
+                macros.add(base + "Lo", f"{values['ci'][0]:+.0f}")
+                macros.add(base + "Hi", f"{values['ci'][1]:+.0f}")
+    lines += ["\\bottomrule", "\\end{tabular}"]
+    (out / "tab_e3.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    macros.add("EthreeGames", str(played))
+    macros.add("EthreeGamesTotal", str(played + 2))  # + FireRed and Emerald (E2)
+    validation = summary.get("validation", {})
+    if validation:
+        macros.add("EthreeRho", f"{validation['spearman_rho']:.2f}")
+        macros.add("EthreeRhoN", str(validation["episodes"]))
+    wins = sum(1 for key, *_ in E3_GAMES if key in games
+               and games[key].get("screens_tests", {}).get("zero_shot-random", {}).get("ci", [0, 0])[0] > 0)
+    macros.add("EthreeZeroShotWins", str(wins))
+    if (run / "montage.png").exists():
+        shutil.copy2(run / "montage.png", figs / "e3_montage.png")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--e1", type=Path, default=ROOT / "artifacts/ares_u/battle/final")
     parser.add_argument("--e2", type=Path, default=ROOT / "artifacts/ares_u/nav/final")
+    parser.add_argument("--e3", type=Path, default=ROOT / "artifacts/ares_u/e3")
     parser.add_argument("--out", type=Path, default=ROOT / "informe")
     args = parser.parse_args(argv)
     generated, figs = args.out / "generated", args.out / "figs"
@@ -285,6 +335,10 @@ def main(argv: list[str] | None = None) -> None:
         e2_assets(args.e2, generated, figs, macros)
     else:
         print(f"[skip] E2: {args.e2 / 'summary.json'} missing")
+    if (args.e3 / "summary.json").exists():
+        e3_assets(args.e3, generated, figs, macros)
+    else:
+        print(f"[skip] E3: {args.e3 / 'summary.json'} missing")
     (generated / "numbers.tex").write_text(macros.text(), encoding="utf-8")
     print(generated)
 

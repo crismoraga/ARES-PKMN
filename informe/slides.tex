@@ -172,11 +172,29 @@ Brecha Gen1$-$Gen3 (PPO vs Greedy): \textbf{\val{EoneGapPpoGreedyGenThree}} [\va
 \end{columns}
 \end{frame}
 
+\begin{frame}{E3: el mismo agente en ocho juegos (Gen 1 a 5; GB, GBC, GBA, NDS)}
+\begin{columns}[T]
+\column{0.48\textwidth}
+\figgen{e3_montage.png}{\textwidth}
+
+\scriptsize Capa de abstracción: mGBA multinúcleo (GB/GBC/GBA) y DeSmuME (NDS). Misma red, mismos 9 botones, sin táctil.
+\column{0.5\textwidth}
+\scriptsize\inputgen{tab_e3.tex}
+
+\vspace{0.2cm}\small
+\begin{itemize}
+\item Zero-shot $>$ aleatorio en \textbf{\val{EthreeZeroShotWins}/\val{EthreeGames}} juegos nuevos.
+\item Métrica universal (pantallas) validada contra celdas RAM: $\rho=\val{EthreeRho}$.
+\item Adaptadores de medición descubiertos solos (Rojo ES: +5 bytes vs pokered).
+\end{itemize}
+\end{columns}
+\end{frame}
+
 \begin{frame}{Análisis crítico y limitaciones}
 \begin{itemize}
 \item E1 cambia las \textbf{especies}; los movimientos y la mecánica de Gen 3 se comparten.
 \item Combates 3v3 en simulador; no contra la IA de los NPC del cartucho.
-\item E2 mide \textbf{cobertura}, no avance de la historia; pocas semillas.
+\item E2/E3 miden \textbf{exploración}, no avance de la historia; pocas semillas. Transferir acelera, pero no eleva el desempeño final en E2.
 \item Los pilotos para fijar hiperparámetros usaron combates de evaluación. Ningún checkpoint se eligió sobre el test.
 \item \textbf{Nada de esto equivale a terminar un juego}, y no se afirma.
 \end{itemize}
@@ -185,8 +203,8 @@ Brecha Gen1$-$Gen3 (PPO vs Greedy): \textbf{\val{EoneGapPpoGreedyGenThree}} [\va
 \begin{frame}{Conclusiones y trabajo futuro: hacia ARES-U}
 \begin{itemize}
 \item Sin identificadores, la política de combate transfiere a especies de otras generaciones; la ablación con IDs mide cuánto cuesta memorizar.
-\item La exploración aprendida desde píxeles transfiere entre ROM.
-\item \textbf{Hoja de ruta}: capa de abstracción (PyBoy, mGBA, melonDS), encoder compartido entre generaciones, política jerárquica con memoria (xLSTM/SSM), archivo Go-Explore (EA), LLM solo como profesor \emph{offline}, evaluación \emph{leave-one-game-out}.
+\item La exploración aprendida desde píxeles transfiere entre ROM y entre consolas: el mismo agente corre en 8 juegos.
+\item \textbf{Hoja de ruta}: avance de historia con subobjetivos aprendidos, encoder compartido entre generaciones, política jerárquica con memoria (xLSTM/SSM), archivo Go-Explore (EA), LLM solo como profesor \emph{offline}, evaluación \emph{leave-one-game-out}.
 \end{itemize}
 \vspace{0.2cm}
 \centering\large ¿Preguntas?
