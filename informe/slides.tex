@@ -20,8 +20,8 @@
 \newcommand{\figgen}[2]{\IfFileExists{figs/#1}{\includegraphics[width=#2]{figs/#1}}{\fbox{\parbox{#2}{\centering\textcolor{red}{[figura \detokenize{#1} pendiente]}}}}}
 
 \title{ARES-U}
-\subtitle{Representaciones agnósticas al juego para agentes de Pokémon que transfieren entre generaciones}
-\author{Cristóbal Moraga}
+\subtitle{Un agente neuronal que transfiere patrones a través de cinco generaciones de Pokémon}
+\author{Cristóbal Moraga --- Rol 202130008-2}
 \institute{IPD434 Seminario de Soft Computing --- UTFSM}
 \date{Diciembre 2026}
 
@@ -32,22 +32,18 @@
 \centering\small Código: \url{github.com/crismoraga/ARES-PKMN} (rama \texttt{ipd434})
 \end{frame}
 
-\begin{frame}{Problema: un agente para \emph{cualquier} Pokémon}
+\begin{frame}{El problema y la práctica actual}
 \begin{columns}[T]
 \column{0.55\textwidth}
 \begin{itemize}
-\item Navegación, menús, recursos, cientos de combates por turnos con información parcial.
-\item Tres familias de agentes (2023--2026):
-\begin{itemize}
-\item \textbf{RL + PyBoy} sobre \emph{Red}: llega a Cerulean (0\% la completa).
-\item \textbf{LLM + harness}: Gemini terminó \emph{Blue} en 813\,h; Claude tardó un año.
-\item \textbf{Bots de combate}: nivel humano en Showdown, una sola generación.
-\end{itemize}
+\item \textbf{RL} (PPO sobre \emph{Red}): un solo juego, recompensas y scripts específicos; llega a Cerulean y no la completa.
+\item \textbf{LLM + harness} (Gemini, Claude): terminan juegos con RAM convertida a texto y \emph{pathfinders}. \textbf{No aprenden} entre corridas.
+\item \textbf{Bots de combate}: una generación y un formato.
 \item \textbf{Nadie entrena en un juego y evalúa en otro.}
 \end{itemize}
 \column{0.42\textwidth}
-\begin{block}{Pregunta}
-¿Puede una red aprender patrones de Pokémon que \textbf{transfieran} a contenido de otras generaciones que \textbf{nunca vio}?
+\begin{block}{Propuesta}
+Un solo agente que \textbf{reconoce los patrones comunes} de la saga y \textbf{evoluciona} de generación en generación heredando lo aprendido.
 \end{block}
 \end{columns}
 \end{frame}
@@ -59,154 +55,119 @@
 Vicio & Evidencia \\
 \midrule
 Harness / RAM privilegiada & minimapas, \emph{pathfinders}, RAM a texto (Gemini, Claude) \\
+``Sin scripts'' que sí los usa & Jev: lee RAM, A*, hitos escritos a mano, recarga checkpoints (su README) \\
 Scripts y trampas & dinero infinito, HMs automáticos (PokeRL ``beat Red'') \\
-Recompensa a mano por ROM & 25+ términos de evento; \emph{reward hacking}: 399 curas vs 23 humano \\
-Cero generalización & todo en un ROM; modelos cosidos por tramo \\
-N=1 y métricas incomparables & horas vs pasos vs turnos; sin semillas \\
-Memorizar IDs & one-hot de especie: no transfiere \\
+Cero generalización & todo en un ROM; modelos por tramo \\
+N=1, métricas incomparables & horas vs pasos vs turnos; sin semillas \\
 \midrule
-\textbf{ARES-PKMN (antes)} & solo RAM Gen 3, 101 hitos a mano, red de combate con peso $0.05$, 1--3 medallas \\
+\textbf{ARES-PKMN (antes)} & solo RAM Gen 3, 101 hitos a mano, red con peso $0.05$, 1--3 medallas \\
 \bottomrule
 \end{tabular}
 \end{frame}
 
-\begin{frame}{Idea: describir \emph{qué es} un Pokémon, nunca \emph{quién es}}
-\centering
-\begin{tikzpicture}[node distance=0.35cm, box/.style={draw, rounded corners, minimum height=0.8cm, align=center, font=\small}]
-\node[box, fill=gray!15] (f) {Campo\\clima, turno, PS};
-\node[box, fill=blue!10, right=of f] (e) {6 entidades\\tipos, stats base,\\PS, estado};
-\node[box, fill=green!10, right=of e] (a) {6 acciones\\tipo, potencia, eficacia,\\daño estimado};
-\node[box, fill=ares!15, below=1.0cm of e, minimum width=8cm] (t) {Transformer pre-norm: 3 capas, 4 cabezas, $d=128$ (464k parámetros)};
-\node[box, below left=0.8cm and -1.5cm of t] (p) {$\pi$: atención de puntero\\sobre acciones legales};
-\node[box, below right=0.8cm and -1.5cm of t] (v) {$V$: crítico};
-\draw[-{Latex}] (f) -- (t); \draw[-{Latex}] (e) -- (t); \draw[-{Latex}] (a) -- (t);
-\draw[-{Latex}] (t) -- (p); \draw[-{Latex}] (t) -- (v);
-\end{tikzpicture}
+\begin{frame}{Patrones que persisten, dificultad que crece}
+\small
+\begin{tabular}{llp{0.62\textwidth}}
+\toprule
+Gen & Juego (consola) & Se mantiene / se agrega \\
+\midrule
+1 & Rojo (GB) & cuadrícula, menús, tabla de tipos, gimnasios \\
+2 & Cristal (GBC) & + color, reloj día/noche, nuevos tipos \\
+3 & Esmeralda (GBA) & + habilidades, combates dobles, mapas más grandes \\
+4 & Platino (NDS) & + división física/especial, pantalla táctil, dos pantallas \\
+5 & Negro (NDS) & + perspectiva 3D, cámara dinámica \\
+\bottomrule
+\end{tabular}
 
 \vspace{0.3cm}
-\small \textbf{Sin IDs de especie ni de movimiento}. Información oculta del rival ausente. Máscara de acciones ilegales.
+Pregunta: \textbf{¿puede una red aprender lo que se mantiene y adaptarse a lo que se agrega?}
 \end{frame}
 
-\begin{frame}{Entrenamiento y líneas base (unidades del curso)}
-\begin{itemize}
-\item \textbf{PPO por self-play} con liga (yo, instantáneas, Greedy, aleatorio). GAE, LR y entropía con \emph{annealing}, KL objetivo. \hfill \emph{05-1 RL}
-\item Recompensa $\pm1$ + \emph{shaping} por potencial (no altera la política óptima).
-\item \textbf{BC$\to$PPO}: imitación del prior experto y Greedy, luego PPO. \hfill \emph{05-2 transferencia}
-\item \textbf{DQN-MLP}: algoritmo canónico del curso, mismo presupuesto. \hfill \emph{05-1}
-\item \textbf{Ablación PPO+IDs}: mismo modelo + \emph{embedding} de especie.
-\item Heurísticas: Greedy (máximo daño), \textbf{prior experto de ARES}, aleatorio.
-\item GPU AMD RX 6700 XT vía DirectML: ${\sim}6\times$ la CPU, tras resolver un fallo de autograd.
-\end{itemize}
-\end{frame}
-
-\begin{frame}{Protocolo experimental}
+\begin{frame}{Un agente, ocho juegos, cuatro consolas}
 \begin{columns}[T]
 \column{0.5\textwidth}
-\textbf{Splits (motor Gen 3 exacto)}
-\begin{itemize}\small
-\item Entrena: solo especies \textbf{Gen 1} (147).
-\item Evalúa: Gen1, Gen1-H (conjuntos retenidos), \textbf{Gen2$^\ast$ (98)}, \textbf{Gen3$^\ast$ (132)} nunca vistas.
-\item Sin fugas (verificado por revisión adversarial).
-\end{itemize}
+\figgen{e3_montage.png}{\textwidth}
 \column{0.48\textwidth}
-\textbf{Estadística}
-\begin{itemize}\small
-\item \val{EoneSeeds} semillas $\times$ 5 métodos, $6\cdot10^6$ pasos cada uno, checkpoint final.
-\item \val{EoneBattles} combates por split y oponente, en pares con asientos intercambiados.
-\item Test \textbf{pareado} por permutación; IC bootstrap; IC $t$ entre semillas.
-\item Hipótesis \textbf{pre-registradas} H1--H4, Holm.
+\small
+\begin{itemize}
+\item Capa de abstracción: mGBA multinúcleo (GB/GBC/GBA) y DeSmuME (NDS).
+\item Misma red: píxeles $84\times84$, 9 botones, sin táctil.
+\item Encoder AE \emph{(05-3)}, CNN \emph{(05-4)}, PPO + novedad RND \emph{(05-1)}.
+\item RAM \textbf{solo para medir}; los adaptadores se descubren caminando (Rojo ES: +5 bytes vs pokered).
+\item Métrica universal (pantallas únicas) validada: $\rho=\val{EthreeRho}$ con celdas RAM.
 \end{itemize}
 \end{columns}
 \end{frame}
 
-\begin{frame}{Resultados E1: puntaje por split}
-\centering\scriptsize
-\inputgen{tab_e1.tex}
-
-\vspace{0.2cm}\small
-Brecha Gen1$-$Gen3 (PPO vs Greedy): \textbf{\val{EoneGapPpoGreedyGenThree}} [\val{EoneGapPpoGreedyGenThreeLo}, \val{EoneGapPpoGreedyGenThreeHi}]
-\end{frame}
-
-\begin{frame}{Hipótesis pre-registradas}
-\centering\scriptsize
-\inputgen{tab_hyp.tex}
-
-\vspace{0.3cm}
-\figgen{e1_learning_curves.png}{0.75\textwidth}
-\end{frame}
-
-\begin{frame}{¿Cuánto margen hay? Análisis del techo}
-\begin{itemize}
-\item Greedy vs Greedy con asientos intercambiados: en el \textbf{99\%} de los pares gana el mismo \emph{equipo} en ambos asientos.
-\item Planificador Monte Carlo con \textbf{información completa} (ve lo oculto, usa el simulador, sabe que el rival es Greedy): \textbf{0.62} contra Greedy. Optimista, no es cota estricta.
-\item $\Rightarrow$ las ventajas reales son de pocos puntos: para detectarlas hacen falta tests \textbf{pareados} y muchos combates.
-\item PPO-Transformer vs Greedy en Gen3$^\ast$: \textbf{\val{EonePpoGreedyGenThree}} [\val{EonePpoGreedyGenThreeLo}, \val{EonePpoGreedyGenThreeHi}], sin ver el estado oculto ni simular.
-\end{itemize}
-\end{frame}
-
-\begin{frame}{Vicios medidos, no solo declarados}
-\centering\scriptsize
-\inputgen{tab_vice.tex}
-
-\vspace{0.3cm}\small
-\begin{itemize}
-\item \emph{Panic switching}: PPO \val{EoneVicePpoPanicSwitchRate}, DQN \val{EoneViceDqnPanicSwitchRate}, aleatorio \val{EoneViceRandomPanicSwitchRate}.
-\item Cómputo total de E1: \val{EoneComputeHours} h de pared en un PC (Ryzen 5700X3D + RX 6700 XT).
-\end{itemize}
-\end{frame}
-
-\begin{frame}{E2: exploración desde píxeles, FireRed $\to$ Emerald}
+\begin{frame}{E1: patrones de combate entre generaciones}
 \begin{columns}[T]
 \column{0.45\textwidth}
 \small
 \begin{itemize}
-\item mGBA crudo, 8 botones + NOOP (24 cuadros por paso), pila de 4 cuadros $84\times84$.
-\item RAM \textbf{solo} para medir celdas (mapa, $x$, $y$).
-\item AE convolucional preentrenado en FireRed. \hfill\emph{05-3}
-\item PPO + RND + novedad episódica.
-\item Zero-shot y transferencia vs desde cero.
+\item Tokens de atributos, \textbf{sin IDs} de especie ni movimiento.
+\item Transformer pre-norm, atención de puntero sobre acciones legales \emph{(05-2)}.
+\item PPO + \emph{self-play}; línea base DQN del curso \emph{(05-1)}.
+\item Entrena con Gen 1; evalúa en Gen 2/3 \textbf{nunca vistas}.
+\item 5 semillas; tests pareados; hipótesis pre-registradas.
 \end{itemize}
-\scriptsize\inputgen{tab_e2.tex}
 \column{0.53\textwidth}
-\figgen{e2_train_global_cells.png}{\textwidth}
+\scriptsize\inputgen{tab_hyp.tex}
 \end{columns}
 \end{frame}
 
-\begin{frame}{E3: el mismo agente en ocho juegos (Gen 1 a 5; GB, GBC, GBA, NDS)}
-\begin{columns}[T]
-\column{0.48\textwidth}
-\figgen{e3_montage.png}{\textwidth}
+\begin{frame}{E1: resultados}
+\centering\scriptsize
+\inputgen{tab_e1.tex}
 
-\scriptsize Capa de abstracción: mGBA multinúcleo (GB/GBC/GBA) y DeSmuME (NDS). Misma red, mismos 9 botones, sin táctil.
-\column{0.5\textwidth}
-\scriptsize\inputgen{tab_e3.tex}
+\vspace{0.3cm}\small
+\begin{itemize}
+\item Supera a Greedy en especies nunca vistas: \textbf{\val{EonePpoGreedyGenThree}} en Gen 3 (H1, $p_{\mathrm{Holm}}=\val{EoneHOneGenThreeP}$).
+\item El DQN sobre vectores planos se degrada al cambiar de generación; el Transformer apenas.
+\item Techo: incluso un planificador con información completa logra solo 0.62.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{E3: lo aprendido en GBA sirve en GB, GBC y NDS}
+\centering\scriptsize
+\inputgen{tab_e3.tex}
 
 \vspace{0.2cm}\small
+Zero-shot $>$ azar en \textbf{\val{EthreeZeroShotWins}/\val{EthreeGames}} juegos nuevos, sin un solo paso de entrenamiento en ellos.
+\end{frame}
+
+\begin{frame}{E4: el agente evoluciona de Gen 1 a Gen 5}
+\centering
+\figgen{e4_curriculum.pdf}{0.98\textwidth}
+
+\small Rojo $\to$ Cristal $\to$ Esmeralda $\to$ Platino $\to$ Negro. Cada juego parte de lo aprendido en el anterior. La línea en 1 es la práctica actual (entrenar ese juego desde cero, con el mismo presupuesto).
+\end{frame}
+
+\begin{frame}{¿Qué se transfiere?}
 \begin{itemize}
-\item Zero-shot $>$ aleatorio en \textbf{\val{EthreeZeroShotWins}/\val{EthreeGames}} juegos nuevos.
-\item Métrica universal (pantallas) validada contra celdas RAM: $\rho=\val{EthreeRho}$.
-\item Adaptadores de medición descubiertos solos (Rojo ES: +5 bytes vs pokered).
+\item \textbf{Heredar la política completa} (conducta): arranque inmediato al llegar a un juego nuevo.
+\item \textbf{Heredar solo el encoder} (percepción): se pierde el arranque y queda al nivel de entrenar desde cero.
+\item $\Rightarrow$ Lo que la saga comparte es \textbf{conducta}: avanzar diálogos, recorrer pasillos, salir de habitaciones.
+\item FireRed $\to$ Esmeralda: iguala la cobertura del azar en \val{EtwoEmeraldTransferReach} pasos frente a \val{EtwoEmeraldScratchReach} desde cero, pero no mejora el resultado final.
 \end{itemize}
-\end{columns}
 \end{frame}
 
 \begin{frame}{Análisis crítico y limitaciones}
 \begin{itemize}
-\item E1 cambia las \textbf{especies}; los movimientos y la mecánica de Gen 3 se comparten.
-\item Combates 3v3 en simulador; no contra la IA de los NPC del cartucho.
-\item E2/E3 miden \textbf{exploración}, no avance de la historia; pocas semillas. Transferir acelera, pero no eleva el desempeño final en E2.
-\item Los pilotos para fijar hiperparámetros usaron combates de evaluación. Ningún checkpoint se eligió sobre el test.
-\item \textbf{Nada de esto equivale a terminar un juego}, y no se afirma.
+\item \textbf{Explorar no es avanzar en la historia}: nada de esto equivale a terminar un juego, y no se afirma.
+\item E1 cambia especies, no la mecánica de combate de Gen 4+; combates en simulador, no contra la IA de los NPC.
+\item 3 semillas en E3/E4; presupuesto NDS corto (DeSmuME ${\sim}150$ cuadros/s).
+\item Inicio de Platino con una elección manual en el tutorial (documentada); el agente nunca la usa.
+\item Hiperparámetros de E1 ajustados en pilotos sobre combates de evaluación; ningún checkpoint elegido sobre el test.
 \end{itemize}
 \end{frame}
 
-\begin{frame}{Conclusiones y trabajo futuro: hacia ARES-U}
+\begin{frame}{Conclusiones y trabajo futuro}
 \begin{itemize}
-\item Sin identificadores, la política de combate transfiere a especies de otras generaciones; la ablación con IDs mide cuánto cuesta memorizar.
-\item La exploración aprendida desde píxeles transfiere entre ROM y entre consolas: el mismo agente corre en 8 juegos.
-\item \textbf{Hoja de ruta}: avance de historia con subobjetivos aprendidos, encoder compartido entre generaciones, política jerárquica con memoria (xLSTM/SSM), archivo Go-Explore (EA), LLM solo como profesor \emph{offline}, evaluación \emph{leave-one-game-out}.
+\item La saga comparte patrones que una red aprende y reutiliza: en combate (atributos) y en exploración (conducta).
+\item El mismo agente corre en \textbf{8 juegos de 5 generaciones} y mejora la práctica actual de entrenar cada juego desde cero.
+\item \textbf{Siguiente}: subobjetivos de historia aprendidos, memoria (SSM/xLSTM), currículo con repaso de juegos previos, combate en el cartucho.
 \end{itemize}
-\vspace{0.2cm}
+\vspace{0.3cm}
 \centering\large ¿Preguntas?
 \end{frame}
 
