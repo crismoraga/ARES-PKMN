@@ -57,6 +57,31 @@ Protocolo por juego (aleatorio, zero-shot, ajuste, desde cero y encoder; 3 semil
 .\.venv\Scripts\python.exe -m scripts.ares_u_e3 montage
 ```
 
+NDS (Platino, HeartGold, Negro, Negro 2) con el presupuesto corto de DeSmuME:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.ares_u_e3 protocol --games platino heartgold negro negro2 --seeds 0 1 2 --steps 8000
+```
+
+**E4 — currículo generacional** (Rojo → Cristal → Esmeralda → Platino → Negro; la etapa 0 es la corrida de Rojo desde cero de E3):
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.ares_u_e4 protocol --transfer finetune --seeds 0 1 2
+.\.venv\Scripts\python.exe -m scripts.ares_u_e4 summary
+```
+
+**E5 — evolución generacional: proponer, combatir, fusionar, heredar.** En combate (requiere las corridas de E1; comparaciones C1–C6 fijadas en el commit `392d951`):
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.ares_u_e5_battle protocol --seeds 0 1 2 --child-steps 750000
+```
+
+En exploración (4 propuestas por juego, duelos y sopa a lo largo del currículo):
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.ares_u_e5 protocol --seeds 0 1 2
+```
+
 **Recursos del informe, compilación y entrega:**
 
 ```powershell
