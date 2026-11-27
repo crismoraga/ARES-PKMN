@@ -104,7 +104,7 @@ def intro_keys(frame: int, period: int = 24, nds: bool = False) -> int:
 # Upper and lower middle of the bottom screen: where Gen 4/5 intros put their Yes/No (or continue)
 # buttons. Taps alternate between them, so any binary question that loops on one answer ("do you
 # want an explanation?", "anything else?") is eventually answered the other way.
-NDS_TAPS = ((120, 80), (120, 121))
+NDS_TAPS = ((128, 96), (120, 80), (120, 121))  # centre of the touch screen + Yes/No positions
 
 
 def run_intro(spec: GameSpec, frames: int, every: int, out: Path, period: int = 24) -> Path:
