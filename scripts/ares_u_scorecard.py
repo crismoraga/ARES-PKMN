@@ -238,6 +238,17 @@ def evolution_rows() -> list[dict[str, str]]:
                     f"{c6['diff']:+.3f} [{c6['ci'][0]:+.3f}, {c6['ci'][1]:+.3f}], $p_H$={c6['p_holm']:.2g}" if c6 else "--",
                     PENDING if c6 is None else PASS if c6["diff"] > 0 and c6["p_holm"] < 0.05 else FAIL, "E5-combate"))
     v2 = load(ART / "e5_battle" / "v2" / "summary.json")
+    fresh = [load(p) for p in sorted((ART / "e5_battle" / "v2").glob("seed*/test.json"))]
+    if fresh and c6 is not None:  # the same comparison on battles never used before (indices 3000+)
+        from ares_u.battle.paired import bootstrap_mean_ci, sign_flip_p
+        diff = (np.mean([t["vs_greedy"]["U2"]["gen1_train"] for t in fresh], axis=0)
+                - np.mean([t["vs_greedy"]["U0"]["gen1_train"] for t in fresh], axis=0))
+        low, high = bootstrap_mean_ci(diff)
+        p = sign_flip_p(diff)
+        rows.append(row("¿Ese hallazgo se replica en combates nuevos?",
+                        f"la misma diferencia en {len(diff)} combates de test nunca usados", "dif.\\ $>0$, $p<0.05$",
+                        f"{diff.mean():+.3f} [{low:+.3f}, {high:+.3f}], $p$={p:.2g}",
+                        PASS if diff.mean() > 0 and p < 0.05 else FAIL, "E5-combate v2"))
     comps = [c for c in (v2 or {}).get("comparisons", []) if c["id"] in ("D1", "D2", "D3")]
     source, label = "E5-combate v2", "D1--D3"
     if not comps:
@@ -278,8 +289,45 @@ def evolution_rows() -> list[dict[str, str]]:
     return rows
 
 
+def place_novelty_rows() -> list[dict[str, str]]:
+    rows = []
+    variants = (("", "E6", "¿Una señal de píxeles (el fundido al cambiar de lugar) lo hace llegar a más lugares?",
+                 "coef.\\ 1"),
+                ("c50", "E6b", "¿Y si esa señal pesa la mitad de la recompensa? (coef.\\ fijado con los registros de entrenamiento)",
+                 "coef.\\ 50"))
+    for tag, source, question, coef in variants:
+        summary = load(ART / "e6_place" / tag / "summary.json") if tag else load(ART / "e6_place" / "summary.json")
+        games = (summary or {}).get("games", [])
+        text = "; ".join(f"{TITLE[g['game']]} {ci_text(g['maps_diff'][0], g['maps_diff'][1], g['maps_diff'][2], 1)}"
+                         for g in games)
+        passed = sum(1 for g in games if g["pass"])
+        rows.append(row(question, f"mapas distintos por episodio: novedad de lugar ({coef}) $-$ desde cero (RAM solo "
+                        "para medir)", "IC95\\% $>0$ en $\\geq 2$ de 3 juegos",
+                        f"{passed}/{len(games)}: {text}" if games else "--",
+                        PENDING if not games else PASS if passed >= 2 else FAIL, source))
+    # Reward-hacking watch: menu buttons (START + A) and screens, E6b vs scratch, mean over seeds.
+    parts, hacked, total = [], 0, 0
+    for game in ("rojo", "cristal", "emerald"):
+        base = [load(baseline_path(game, "scratch", s)) for s in range(3)]
+        new = [load(ART / "e6_place" / "c50" / game / f"seed{s}" / "eval_place.json") for s in range(3)]
+        if any(x is None for x in base + new):
+            continue
+        menu_base = float(np.mean([b["action_hist"][7] + b["action_hist"][5] for b in base]))
+        menu_new = float(np.mean([n["action_hist"][7] + n["action_hist"][5] for n in new]))
+        screens = float(np.mean([n["screens_mean"] for n in new]) / np.mean([b["screens_mean"] for b in base]))
+        total += 1
+        hacked += int(menu_new > 2 * menu_base and screens < 0.9)
+        parts.append(f"{TITLE[game]} {100 * menu_base:.0f}\\%$\\to${100 * menu_new:.0f}\\%")
+    rows.append(row("¿La señal se puede explotar? (vigilancia de \\emph{reward hacking})",
+                    "uso de START+A y pantallas: E6b frente a desde cero", "sin el doble de menús ni $<90\\%$ de pantallas",
+                    f"explotada en {hacked}/{total}: " + ", ".join(parts) if total else "--",
+                    PENDING if total == 0 else FAIL if hacked else PASS, "E6b"))
+    return rows
+
+
 def build() -> list[dict[str, str]]:
-    rows = [metric_validity(), *battle_rows(), cross_console(), *curriculum_rows(), places_row(), *evolution_rows()]
+    rows = [metric_validity(), *battle_rows(), cross_console(), *curriculum_rows(), places_row(), *place_novelty_rows(),
+            *evolution_rows()]
     rows.append(row("¿Termina el juego?", "medallas obtenidas", "$\\geq 1$ medalla", "0 (no se persigue la historia)",
                     FAIL, "--"))
     return rows
@@ -297,14 +345,22 @@ def main() -> None:
     md += [f"| {MD[r['verdict']]} | {r['question']} | {r['metric']} | {r['criterion']} | {r['result']} | {r['source']} |"
            for r in rows]
     (ART / "scorecard.md").write_text("\n".join(md) + "\n", encoding="utf-8")
-    tex = ["\\begin{tabular}{@{}cL{0.25\\textwidth}L{0.25\\textwidth}L{0.11\\textwidth}L{0.29\\textwidth}l@{}}",
-           "\\toprule", " & Pregunta & Métrica (vs.\\ línea base) & Criterio & Resultado (IC 95\\%) & Exp. \\\\", "\\midrule"]
-    tex += [f"{SYMBOL[r['verdict']]} & {r['question']} & {r['metric']} & {r['criterion']} & {r['result']} & {r['source']} \\\\"
-            for r in rows]
+    tex = ["\\begin{tabular}{@{}cL{0.27\\textwidth}L{0.33\\textwidth}L{0.34\\textwidth}@{}}",
+           "\\toprule", " & Pregunta (experimento) & Métrica y criterio de éxito & Resultado (IC 95\\%) \\\\", "\\midrule"]
+    tex += [f"{SYMBOL[r['verdict']]} & {r['question']} ({r['source']}) & {r['metric']}; \\textbf{{{r['criterion']}}} & "
+            f"{r['result']} \\\\" for r in rows]
     tex += ["\\bottomrule", "\\end{tabular}"]
     generated = ROOT / "informe" / "generated"
     generated.mkdir(parents=True, exist_ok=True)
     (generated / "tab_score.tex").write_text("\n".join(tex) + "\n", encoding="utf-8")
+    per = 7  # slides: verdict, question and result only, 7 rows per slide
+    for suffix, start in zip("abc", range(0, len(rows), per)):
+        part = rows[start:start + per]
+        lines = ["\\begin{tabular}{@{}cL{0.38\\textwidth}L{0.43\\textwidth}l@{}}", "\\toprule",
+                 " & Pregunta & Resultado (IC 95\\%) & Exp. \\\\", "\\midrule"]
+        lines += [f"{SYMBOL[r['verdict']]} & {r['question']} & {r['result']} & {r['source']} \\\\" for r in part]
+        lines += ["\\bottomrule", "\\end{tabular}"]
+        (generated / f"tab_score_{suffix}.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
     counts = {key: sum(1 for r in rows if r["verdict"] == key) for key in (PASS, FAIL, PARTIAL, PENDING)}
     print(ART / "scorecard.md", counts)
 

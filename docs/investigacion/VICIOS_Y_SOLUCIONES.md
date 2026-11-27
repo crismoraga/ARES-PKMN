@@ -312,6 +312,32 @@
 
 ---
 
+## Parte II-b — Vicios que el tablero de veredictos detectó en ARES-U mismo
+
+El tablero (`scripts/ares_u_scorecard.py`, `artifacts/ares_u/scorecard.md`, Tabla II del informe) juzga cada pregunta con un criterio fijado antes de correr, un intervalo de confianza y un veredicto. Detectó cuatro vicios en el propio trabajo. Se documentan aquí en lugar de esconderlos.
+
+### A7. Selección por ruido
+- **Descripción.** El torneo de E5-combate v1 usaba 200 combates por par, con un error estándar de ≈0.035. Las propuestas difieren en menos de 0.015, así que el ranking y la sopa decidían al azar (Miller y Goldberg 1995: con ruido, la selección por torneo degenera en selección aleatoria).
+- **Evidencia.** Datos de validación de v1. En v2, con 10⁴ combates pareados, los hijos difieren ±0.005 (error 0.003).
+- **Cómo se abordó.** v2 (`scripts/ares_u_e5_battle_v2.py`): aptitud con potencia, fusión pareada, nichos y test nuevo. Resultado: no hay diferencias reales que seleccionar. La población no supera al linaje único con el mismo cómputo (D1–D3).
+- **Sin resolver.** Para que una población aporte hace falta diversidad real, por ejemplo escuelas distintas fusionadas con alineación de permutaciones.
+
+### A8. Hallazgo que no se replica
+- **Descripción.** C6 (U2 − U0 en Gen1, v1) dio +0.012 con p_Holm = 0.046 en 500 combates. En 2000 combates nuevos dio +0.004 con p = 0.1.
+- **Cómo se abordó.** El tablero exige replicación en datos nuevos y lo marca ✘. El informe ya no afirma esa mejora.
+
+### A9. Más pantallas no es más lugares
+- **Descripción.** La métrica de pantallas está validada (ρ = 0.89 con celdas RAM), pero el currículo no llega a más mapas distintos que entrenar desde cero. La novedad episódica se satisface recorriendo un mismo lugar.
+- **Cómo se abordó.** E6 (`scripts/ares_u_place.py`) agregó un bono de lugar basado solo en píxeles: el fundido que toda la saga muestra al cambiar de lugar. El detector encuentra el 100% de los mapas nuevos, pero su precisión es de 0.08–0.66, porque los menús también funden.
+- **Resultado.** No se cumple el criterio. Con coeficiente 1 no hubo efecto (la señal pesaba ≈1% de la recompensa). Con coeficiente 50 hubo *reward hacking* (ver A10).
+
+### A10. *Reward hacking* de la señal de lugar
+- **Descripción.** Con coeficiente 50 (E6b), el agente aprendió a abrir menús para cobrar el bono. El uso de START + A pasó de 2% a 22% en Rojo y de 3% a 39% en Esmeralda, y las pantallas cayeron entre 37% y 68%.
+- **Cómo se abordó.** El tablero vigila automáticamente el uso de botones de menú y la cobertura. Una corrección (marcar como visto el lugar del que se sale) se evaluó fuera de línea y no mejoró la precisión, así que no se entrenó.
+- **Sin resolver.** Falta una señal de progreso que no se pueda explotar.
+
+---
+
 ## Parte III — Tabla resumen
 
 | # | Vicio | Severidad | Respuesta de ARES-U | Se verifica en |

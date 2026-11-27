@@ -50,22 +50,40 @@ class PlaceNovelty:
     count as a new place. Pixels only.
     """
 
-    def __init__(self, num_envs: int, height: int, width: int, rows: int = 4, cols: int = 4, levels: int = 4) -> None:
+    BLANK_STD = 8.0
+
+    def __init__(self, num_envs: int, height: int, width: int, rows: int = 4, cols: int = 4, levels: int = 4,
+                 mark_departure: bool = False) -> None:
         self.hasher = FrameCellHasher(height, width, rows, cols, levels)
         self.seen: list[set[bytes]] = [set() for _ in range(num_envs)]
+        self.last: list[bytes | None] = [None] * num_envs
+        # Optional (off in E6/E6b): the scene the agent leaves also counts as seen, so opening a menu and closing it again pays
+        # at most once. Offline it did not raise precision and lowered recall (coarse keys collide), so it was not trained.
+        self.mark_departure = mark_departure
 
     def reset(self, frames: UInt8Array) -> None:
-        self.seen = [{key} for key in self.hasher.keys(frames)]
+        keys = self.hasher.keys(frames)
+        self.seen = [{key} for key in keys]
+        self.last = list(keys)
 
     def step(self, frames: UInt8Array, transitions: NDArray[np.bool_], dones: NDArray[np.bool_]) -> Float64Array:
         bonus = np.zeros(len(self.seen), dtype=np.float64)
         keys = self.hasher.keys(frames)
+        blanks = frames.reshape(len(keys), -1).astype(np.float32).std(axis=1) < self.BLANK_STD
         for index, key in enumerate(keys):
             if dones[index]:
                 self.seen[index] = {key}  # the first frame of the next episode: its starting place
-            elif transitions[index] and key not in self.seen[index]:
-                self.seen[index].add(key)
-                bonus[index] = 1.0
+                self.last[index] = key
+                continue
+            if transitions[index]:
+                departure = self.last[index]
+                if self.mark_departure and departure is not None:
+                    self.seen[index].add(departure)
+                if key not in self.seen[index]:
+                    self.seen[index].add(key)
+                    bonus[index] = 1.0
+            if not blanks[index]:
+                self.last[index] = key
         return bonus
 
 
