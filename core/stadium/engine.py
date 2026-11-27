@@ -435,9 +435,14 @@ class Battle:
                 return
         movers = [side for side in (0, 1) if actions[side] < 4 and side not in pursued]
         order = self._move_order(movers, actions)
+        choosers = {side: self.sides[side].fighter for side in order}
         for position, side in enumerate(order):
             fighter = self.sides[side].fighter
             if not fighter.alive or self.over:
+                continue
+            if fighter is not choosers[side]:
+                # Forced out (Roar/Whirlwind) before acting: as in Gen 3, the replacement does not use
+                # the move its predecessor chose (it would index the wrong, possibly missing, slot).
                 continue
             slot = actions[side]
             self._use_move(side, slot, moved_last=position == len(order) - 1 and len(order) == 2)
