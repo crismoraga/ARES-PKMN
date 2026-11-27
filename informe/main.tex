@@ -8,6 +8,8 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcommand{\fitcol}[1]{\resizebox{\columnwidth}{!}{#1}}
 \usepackage{url}
@@ -25,7 +27,7 @@
 
 \begin{document}
 
-\title{ARES-U: un agente neuronal que transfiere patrones a través de cinco generaciones de Pokémon}
+\title{ARES-U: evolución generacional de un agente neuronal que transfiere patrones entre cinco generaciones de Pokémon}
 
 \author{\IEEEauthorblockN{\autor}
 \IEEEauthorblockA{Rol USM: \rolusm\\
@@ -35,45 +37,75 @@ Código: \url{https://github.com/crismoraga/ARES-PKMN} (rama \texttt{ipd434})}}
 \maketitle
 
 \begin{abstract}
-Los agentes que juegan Pokémon se entrenan para un solo juego: el RL parte desde cero en cada ROM con recompensas específicas, y los LLM no aprenden de la experiencia. Sin embargo, las cinco primeras generaciones comparten patrones (mapa en cuadrícula, menús, combates por turnos con tipos) y cada una agrega dificultades nuevas. Este trabajo propone que un agente aprenda esos patrones una vez y los transfiera. Una capa de abstracción común conecta el mismo agente de píxeles a 8 juegos de 4 consolas. En combate (E1), un Transformer de entidades sin identificadores, entrenado con especies de Gen~1, supera a la heurística Greedy en especies nunca vistas de Gen~2 y Gen~3 (+\val{EoneHOneGenThreeDiff}, $p_{\mathrm{Holm}}=\val{EoneHOneGenThreeP}$) y al DQN del curso. En exploración, el agente entrenado en GBA supera al azar sin reentrenar en Game Boy y NDS (E3). En un currículo generacional (E4: Rojo$\to$Cristal$\to$Esmeralda$\to$Platino$\to$Negro), cada juego parte de lo aprendido en el anterior y se compara con la práctica actual de entrenar desde cero. Se reportan arranque, ganancia, retención y generalización a juegos no vistos, con varias semillas e intervalos de confianza.
+Los agentes que juegan Pokémon se entrenan para un solo juego: el RL parte desde cero en cada ROM y los LLM no aprenden de la experiencia. Este trabajo trata la saga como una secuencia de generaciones que conservan patrones (cuadrícula, menús, combate por tipos) y agregan dificultad, y propone un agente que \emph{evoluciona} de una a otra. En cada generación varias propuestas neuronales compiten entre sí (torneos de combate y duelos de exploración), las mejores se fusionan en una propuesta única (destilación o sopa de modelos) y esa propuesta engendra la población de la generación siguiente. Una capa de abstracción común conecta el mismo agente de píxeles a 8 juegos de 4 consolas. En combate, un Transformer de entidades sin identificadores entrenado con especies de Gen~1 vence a la heurística Greedy en especies nunca vistas (+\val{EoneHOneGenThreeDiff} en Gen~3, $p_{\mathrm{Holm}}=\val{EoneHOneGenThreeP}$). La propuesta unificada mejora en cada generación sin olvidar la primera (+\val{EfivebCSixDiff} en Gen~1, $p_{\mathrm{Holm}}=\val{EfivebCSixP}$). En exploración, el currículo Rojo$\to$Cristal$\to$Esmeralda$\to$Platino$\to$Negro supera a la práctica actual de entrenar cada juego desde cero. Se reportan también los límites: con el mismo cómputo, la población no supera a un linaje único.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Transferencia, aprendizaje por refuerzo, currículo, Transformers, autoencoders, Pokémon.
+Transferencia, computación evolutiva, aprendizaje adversarial, Transformers, aprendizaje por refuerzo, Pokémon.
 \end{IEEEkeywords}
 
 \section{Introducción}
-Los agentes RL sobre \emph{Pokémon Red} entrenan un solo juego con 25+ términos de recompensa específicos, scripts y \emph{savestates} \cite{pleines2025pokemonred,rubinstein2025pokerl}. Los LLM terminan juegos gracias a \emph{harnesses} con RAM convertida a texto, sin aprender entre corridas \cite{gemini25report,karten2026pokeagent}. Ningún trabajo revisado entrena en un juego y evalúa en otro. La auditoría del sistema previo del autor (ARES-PKMN) tenía el mismo defecto: lee RAM de dos ROM de Gen~3, decide con 101 hitos escritos a mano, y sus redes pesan $0.05$ en la decisión. Sin embargo, la serie conserva patrones (cuadrícula, menús, tabla de tipos, gimnasios) y cada generación agrega dificultad: color y reloj (G2), habilidades (G3), división física/especial y pantalla táctil (G4), perspectiva 3D (G5).
+Los agentes RL sobre \emph{Pokémon Red} entrenan un solo juego con decenas de términos de recompensa específicos, scripts y \emph{savestates} \cite{pleines2025pokemonred,rubinstein2025pokerl}. Los LLM terminan juegos gracias a \emph{harnesses} con RAM convertida a texto, sin aprender entre corridas \cite{gemini25report,karten2026pokeagent}. En la literatura revisada (72 trabajos, repositorios y videos) no encontramos un agente que entrene en un juego de la saga y se evalúe en otro. La auditoría del sistema previo del autor (ARES-PKMN) mostró el mismo defecto: lee RAM de dos ROM de Gen~3, decide con 101 hitos escritos a mano y sus redes pesan $0.05$ en la decisión.
 
-\textbf{Propuesta.} Un solo agente, que solo percibe píxeles y oprime 8 botones, que reconoce los patrones comunes y \emph{evoluciona} de generación en generación heredando lo aprendido. \textbf{Contribuciones:}
+La serie, sin embargo, conserva patrones y cada generación agrega dificultad: color y reloj (G2), habilidades y combates dobles (G3), división física/especial y pantalla táctil (G4), perspectiva 3D (G5). \textbf{Propuesta:} un solo agente que percibe píxeles, oprime los mismos botones y hereda lo aprendido de generación en generación mediante un ciclo evolutivo y adversarial: \emph{proponer, combatir, fusionar, heredar} (Fig.~\ref{fig:ciclo}). \textbf{Contribuciones:}
 (1) catálogo de 17 vicios de la literatura y 6 propios, con respuesta verificable (repositorio);
-(2) capa de abstracción de juego (mGBA multinúcleo y DeSmuME) con adaptadores de medición descubiertos automáticamente, sobre 8 juegos;
+(2) capa de abstracción de juego (mGBA multinúcleo y DeSmuME) sobre 8 juegos;
 (3) E1: patrones de combate transferidos a especies de generaciones no vistas;
-(4) E3/E4: transferencia entre consolas y un currículo generacional frente a la práctica actual;
-(5) entrenamiento en una GPU AMD vía DirectML, cuya falla de autograd se documenta y resuelve (${\sim}6\times$ la CPU).
+(4) E3/E4: transferencia entre consolas y currículo generacional frente a la práctica actual;
+(5) E5: evolución generacional por torneos, fusión y herencia, en combate y en exploración, con controles de cómputo igualado. Sin precedente en la literatura revisada.
 
 \section{Trabajos relacionados}
-\textbf{RL}: Whidden y Pleines et al.\ usan PPO con recompensa de exploración en \emph{Red} \cite{whidden2023pokemonred,pleines2025pokemonred}; PokeRL afirma terminarlo con scripts \cite{rubinstein2025pokerl}. \textbf{LLM}: Gemini y Claude completan juegos con \emph{pathfinders} y minimapas \cite{gemini25report,bradshaw2026yearlate}; PokéAgent formaliza la confusión entre harness y modelo \cite{karten2026pokeagent}. \textbf{Combate}: Metamon, PokéChamp y PokéLLMon \cite{grigsby2025metamon,karten2025pokechamp,hu2024pokellmon} evalúan un formato fijo. \textbf{Generalistas}: VPT, SIMA y NitroGen transfieren entre juegos con datos masivos \cite{baker2022vpt,sima2024,nitrogen2026}; este trabajo lleva la idea a una GPU de consumo dentro de una saga con patrones compartidos.
+\textbf{RL}: Whidden y Pleines et al.\ usan PPO con recompensa de exploración en \emph{Red} \cite{whidden2023pokemonred,pleines2025pokemonred}; PokeRL afirma terminarlo con scripts \cite{rubinstein2025pokerl}. \textbf{LLM}: Gemini y Claude completan juegos con \emph{pathfinders} y minimapas \cite{gemini25report,bradshaw2026yearlate}; PokéAgent separa harness y modelo \cite{karten2026pokeagent}. \textbf{Combate}: Metamon, PokéChamp y PokéLLMon \cite{grigsby2025metamon,karten2025pokechamp,hu2024pokellmon} fijan un formato. \textbf{Generalistas}: VPT, SIMA y NitroGen transfieren entre juegos con datos masivos \cite{baker2022vpt,sima2024,nitrogen2026}. \textbf{Poblaciones}: PBT muta hiperparámetros durante el entrenamiento \cite{jaderberg2017pbt}; AlphaStar entrena una liga adversarial \cite{vinyals2019alphastar}; las sopas de modelos promedian ajustes finos de un mismo padre \cite{wortsman2022soups}. Aquí esas ideas se encadenan \emph{entre juegos}: la población de cada generación nace de la fusión de la anterior.
 
 \section{Método}
-Cada componente aplica una unidad del curso: MDP y DQN como línea base (05-1), atención con máscaras y transferencia (05-2), autoencoder como preentrenamiento (05-3) y encoder convolucional transferido (05-4).
-
 \subsection{Capa de abstracción de juego (GAL)}
-GB, GBC y GBA corren sobre mGBA compilado con ambos núcleos; NDS sobre DeSmuME. Toda pantalla se reduce a $84\times84$ en gris (pila de 4) y la acción es uno de 9 botones universales; el agente nunca usa el táctil. Los estados iniciales salen de un conductor de intros genérico, verificado visualmente. La RAM se usa \emph{solo para medir}: celdas únicas (mapa, $x$, $y$), cuyos adaptadores se descubren caminando (Rojo en español está desplazado 5 bytes respecto de pokered). La métrica universal son las \emph{pantallas únicas} por episodio (firma de $7\times7$ bloques, 4 niveles de gris).
+GB, GBC y GBA corren sobre mGBA compilado con ambos núcleos; NDS sobre DeSmuME. Toda pantalla se reduce a $84\times84$ en gris (pila de 4) y la acción es uno de 9 botones universales; el agente nunca usa el táctil. La RAM se usa \emph{solo para medir}, con adaptadores descubiertos caminando (Rojo en español está desplazado 5 bytes respecto de pokered). La métrica universal son las \emph{pantallas únicas} por episodio (firma de $7\times7$ bloques, 4 niveles de gris).
 
-\subsection{Agente de exploración}
-Encoder convolucional (preentrenado como autoencoder en FireRed \cite{hinton2006ae}) y actor-crítico PPO \cite{schulman2017ppo} con dos cabezas de valor: novedad RND \cite{burda2018rnd} y novedad episódica por conteo de firmas. No hay recompensa del juego ni scripts.
+\subsection{Agentes}
+\textbf{Exploración}: encoder convolucional preentrenado como autoencoder \cite{hinton2006ae} y actor-crítico PPO \cite{schulman2017ppo} con novedad RND \cite{burda2018rnd} y episódica; sin recompensa del juego ni scripts. \textbf{Combate}: cada Pokémon y cada acción son \emph{tokens} de atributos (tipos, estadísticas, PS, estado; tipo, potencia, eficacia y daño estimado), \textbf{sin identificadores} de especie ni de movimiento, sobre el motor Gen~3 de ARES. Un Transformer pre-norm (3 capas, 4 cabezas, $d=128$) \cite{vaswani2017attention} elige con atención de puntero sobre acciones legales y se entrena con PPO por \emph{self-play} contra una liga.
 
-\subsection{Currículo generacional (E4)}
-El agente recorre Rojo (G1, GB) $\to$ Cristal (G2, GBC) $\to$ Esmeralda (G3, GBA) $\to$ Platino (G4, NDS) $\to$ Negro (G5, NDS). Cada etapa inicializa con la política final de la anterior y entrena con el mismo presupuesto que la línea base desde cero (30k pasos en GB/GBC/GBA, 8k en NDS). Como ablación, una variante hereda solo el encoder y reinicia las cabezas.
+\subsection{Evolución generacional (E5): proponer, combatir, fusionar, heredar}
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[node distance=4mm and 6mm, every node/.style={font=\scriptsize}, box/.style={draw, rounded corners, fill=#1!12, minimum width=19mm, minimum height=6mm, align=center}, >=Stealth]
+\node[box=red] (p) {Proponer\\$K$ hijos mutados};
+\node[box=orange, right=of p] (c) {Combatir\\torneo / duelos};
+\node[box=green!60!black, below=of c] (f) {Fusionar\\destilación o sopa};
+\node[box=blue, below=of p] (h) {Heredar\\padre de G$_{g+1}$};
+\draw[->] (p) -- (c); \draw[->] (c) -- (f); \draw[->] (f) -- (h); \draw[->] (h) -- node[left, align=right]{nuevo juego\\o especies} (p);
+\end{tikzpicture}
+\caption{Ciclo de cada generación de E5. Selección por torneo, mutación y elitismo (computación evolutiva), rivales congelados en la liga (aprendizaje adversarial) y herencia de pesos (transferencia).}
+\label{fig:ciclo}
+\end{figure}
 
-\subsection{Combate (E1)}
-Cada Pokémon y cada acción son \emph{tokens} de atributos (tipos, estadísticas base, PS, estado; tipo, potencia, eficacia y daño estimado de cada movimiento), \textbf{sin identificadores de especie ni de movimiento}, sobre el motor Gen~3 de ARES. Un Transformer pre-norm (3 capas, 4 cabezas, $d=128$) \cite{vaswani2017attention} elige con atención de puntero sobre acciones legales y se entrena con PPO por \emph{self-play} contra una liga.
+\textbf{Proponer.} Desde el padre se ajustan $K=4$ hijos en el nuevo juego (o especies). El hijo 0 conserva los hiperparámetros élite; los demás los mutan (tasa de aprendizaje, entropía, coeficientes de novedad o proporción de rivales, \emph{clip}). En combate, la liga de cada hijo incluye como rivales congelados al padre y al top-3 de la generación anterior.
+\textbf{Combatir.} En combate, todos contra todos en el Stadium sobre combates de \emph{validación}; los ratings Bradley--Terry \cite{hunter2004bt} (escala Elo) ordenan la población, como la selección por torneo \cite{miller1995tournament}. En exploración, cada par de propuestas se enfrenta en duelos de cobertura sobre semillas de validación.
+\textbf{Fusionar.} Hijos de un mismo padre comparten cuenca, así que se combinan con una \emph{sopa codiciosa} \cite{wortsman2022soups}: en orden de ranking, un hijo entra al promedio de pesos si el puntaje de validación no baja. Si las propuestas tienen inicializaciones distintas, la simetría de permutación impide promediar pesos \cite{ainsworth2023rebasin}. En ese caso el ensamble del top-3 se \emph{destila} en el campeón \cite{hinton2015distill,rusu2016policydistill}, y el resultado se acepta solo si no empeora en validación.
+\textbf{Heredar.} La propuesta única es el padre de la generación siguiente. Nunca se elige nada con combates o episodios de test.
+
+\begin{table}[t]
+\caption{Conceptos de IPD434 y dónde se aplican.}
+\label{tab:curso}
+\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\begin{tabular}{L{0.36\columnwidth}L{0.56\columnwidth}}
+\toprule
+Unidad & Componente de ARES-U \\
+\midrule
+RL: MDP, DQN, PPO (05-1) & agentes de combate y exploración; DQN de línea base \\
+Transformers y transferencia (05-2) & Transformer de entidades; ajuste fino entre juegos y generaciones \\
+AE, VAE, GAN; adversarial (05-3) & encoder AE; \emph{self-play} y liga de rivales \\
+CNN avanzadas (05-4) & encoder convolucional transferido entre consolas \\
+Computación evolutiva (03, 05) & torneo, mutación, elitismo, fusión de la población \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \section{Protocolo experimental}
-\textbf{E1}: entrena con especies de Gen~1 (147); evalúa en Gen1, Gen1-H (conjuntos retenidos), Gen2$^\ast$ (98) y Gen3$^\ast$ (132) nunca vistas. Métodos con $6\cdot10^6$ decisiones y 5 semillas: PPO-Transformer, PPO+IDs (ablación), BC$\to$PPO, BC y DQN-MLP \cite{mnih2015dqn}. Se usan \val{EoneBattles} combates por split en pares con asientos intercambiados. Estadística pareada (permutación por cambio de signo, IC bootstrap sobre pares) y familia de hipótesis pre-registrada en el código (commit \texttt{53d61ec}) con Holm: H1 PPO$>$Greedy, H2 PPO$>$PPO+IDs, H3 PPO$>$DQN, H4 BC$\to$PPO vs PPO, en Gen2$^\ast$/Gen3$^\ast$.
-\textbf{E3}: en cada juego nuevo, aleatorio frente a la política de GBA sin reentrenar (\emph{zero-shot}), ajustada o desde cero. \textbf{E4}: el currículo frente a la práctica actual (desde cero, mismo presupuesto y semillas). Se mide el puntaje normalizado $(R-R_{\text{azar}})/(R_{\text{cero}}-R_{\text{azar}})$: 0 es el azar, 1 la práctica actual y $>1$ mejor que ella. También el \emph{arranque} al llegar a cada juego, la retención de juegos previos y la generalización a juegos no vistos (HeartGold, Negro~2). En E3/E4 se usan 3 semillas y 8 episodios de 512 pasos, con IC bootstrap jerárquico (semillas, luego episodios).
-\textbf{Hardware}: Ryzen~7 5700X3D, 24\,GB, RX~6700~XT (DirectML).
+\textbf{E1}: entrena con especies de Gen~1; evalúa en Gen1, Gen1-H, Gen2$^\ast$ y Gen3$^\ast$ nunca vistas. Se comparan PPO-Transformer, PPO+IDs, BC$\to$PPO, BC y DQN-MLP \cite{mnih2015dqn}, con $6\cdot10^6$ decisiones, 5 semillas y \val{EoneBattles} combates por split con asientos intercambiados. La familia H1--H4 está pre-registrada (commit \texttt{53d61ec}); se usa permutación pareada por cambio de signo con corrección de Holm.
+\textbf{E3/E4}: E3 compara, en cada juego nuevo, el azar con la política de GBA sin reentrenar, ajustada o desde cero. E4 recorre el currículo frente a la práctica actual (desde cero, mismo presupuesto: 30k pasos en GB/GBC/GBA y 8k en NDS). El puntaje normalizado es $(R-R_{\text{azar}})/(R_{\text{cero}}-R_{\text{azar}})$: 0 es el azar y 1 la práctica actual.
+\textbf{E5-combate}: la G0 tiene 10 propuestas de dos escuelas (las 5 PPO y las 5 BC$\to$PPO de E1), un torneo de 200 combates por par en Gen1 y destilación con 200k decisiones. La G1 entrena 4 hijos de $7.5\cdot10^5$ pasos en especies de Gen2 y la G2 hace lo mismo en Gen3. El control L es un \emph{linaje único} con el mismo cómputo: el mismo padre ajustado $4\times7.5\cdot10^5$ pasos, sin torneo ni fusión. Se usan 3 semillas y 500 combates de test por split. Las comparaciones C1--C6 quedaron fijadas en el código antes de correr (commit \texttt{392d951}).
+\textbf{E5-exploración}: 4 propuestas por juego con 15k pasos (4k en NDS), duelos sobre 4 semillas de validación, sopa y 8 episodios de test, con 3 semillas.
+\textbf{Hardware}: Ryzen~7 5700X3D, 24\,GB y RX~6700~XT (DirectML, ${\sim}6\times$ la CPU tras resolver una falla de autograd).
 
 \section{Resultados}
 \begin{table}[t]
@@ -90,7 +122,7 @@ Cada Pokémon y cada acción son \emph{tokens} de atributos (tipos, estadística
 \fitcol{\inputgen{tab_hyp.tex}}
 \end{table}
 
-\textbf{E1, patrones de combate.} El PPO-Transformer obtiene \val{EonePpoGreedyGenOneTrain} contra Greedy en Gen1, \val{EonePpoGreedyGenTwo} en Gen2$^\ast$ y \val{EonePpoGreedyGenThree} en Gen3$^\ast$ (Tablas~\ref{tab:e1}--\ref{tab:hyp}). H1 y H3 se confirman: aprende reglas de tipos y estadísticas que valen para especies que no existían en su generación de entrenamiento. El DQN sobre vectores planos cae de \val{EoneDqnGreedyGenOneTrain} a \val{EoneDqnGreedyGenThree}. H2 (IDs) y H4 (imitación) no son significativas. El agente aprendido casi no hace \emph{panic switching} (\val{EoneVicePpoPanicSwitchRate}, frente a \val{EoneViceRandomPanicSwitchRate} del aleatorio).
+\textbf{E1, patrones de combate.} El PPO-Transformer obtiene \val{EonePpoGreedyGenOneTrain} contra Greedy en Gen1, \val{EonePpoGreedyGenTwo} en Gen2$^\ast$ y \val{EonePpoGreedyGenThree} en Gen3$^\ast$ (Tablas~\ref{tab:e1}--\ref{tab:hyp}). H1 y H3 se confirman: el agente aprende reglas de tipos y estadísticas que valen para especies que no existían en su generación de entrenamiento. El DQN sobre vectores planos cae de \val{EoneDqnGreedyGenOneTrain} a \val{EoneDqnGreedyGenThree}. H2 (IDs) y H4 (imitación) no son significativas.
 
 \begin{table}[t]
 \caption{E3: pantallas únicas (y celdas RAM) por episodio de 512 pasos en juegos nuevos (media $\pm$ d.e., 3 semillas).}
@@ -99,26 +131,43 @@ Cada Pokémon y cada acción son \emph{tokens} de atributos (tipos, estadística
 \fitcol{\inputgen{tab_e3.tex}}
 \end{table}
 
-\textbf{E3, patrones entre consolas.} La política entrenada solo en GBA supera al azar sin reentrenar en \val{EthreeZeroShotWins} de \val{EthreeGames} juegos de GB, GBC y NDS (Tabla~\ref{tab:e3}). La métrica de pantallas se correlaciona con las celdas RAM (Spearman $\rho=\val{EthreeRho}$, $n=\val{EthreeRhoN}$), lo que valida usarla en NDS.
+\textbf{E3, patrones entre consolas.} La política entrenada solo en GBA supera al azar sin reentrenar en \val{EthreeZeroShotWins} de \val{EthreeGames} juegos de GB, GBC y NDS (Tabla~\ref{tab:e3}). La métrica de pantallas se correlaciona con las celdas RAM (Spearman $\rho=\val{EthreeRho}$, $n=\val{EthreeRhoN}$). Heredar solo el encoder rinde como entrenar desde cero; ajustar la política completa rinde más. Lo que se transfiere es conducta, no solo percepción.
 
 \begin{figure*}[t]
 \centering
 \figgen{e4_curriculum.pdf}{0.92\textwidth}
-\caption{E4: (a) puntaje normalizado al llegar a cada generación (zero-shot, triángulos) y tras entrenarla (círculos); la línea en 1 es la práctica actual (desde cero, mismo presupuesto). (b) Matriz de retención y transferencia del currículo: fila $i$ = agente tras la etapa $i$; columna = juego evaluado; $^\ast$ = nunca entrenado.}
+\caption{E4 y E5-exploración: (a) puntaje normalizado al llegar a cada generación (zero-shot) y tras entrenarla; la línea en 1 es la práctica actual (cada juego desde cero, mismo presupuesto). (b) Matriz de retención y transferencia del currículo: fila $i$ = agente tras la etapa $i$; $^\ast$ = juego nunca entrenado.}
 \label{fig:e4}
 \end{figure*}
 
-\textbf{E4, evolución generacional.} Al llegar a Cristal, el agente de Rojo arranca en \val{EfourFinetuneCristalJump}; tras entrenar alcanza \val{EfourFinetuneCristalNorm}. En Esmeralda, \val{EfourFinetuneEmeraldJump} y \val{EfourFinetuneEmeraldNorm}; en Platino, \val{EfourFinetunePlatinoJump} y \val{EfourFinetunePlatinoNorm}; en Negro, \val{EfourFinetuneNegroJump} y \val{EfourFinetuneNegroNorm} (Fig.~\ref{fig:e4}). En juegos nunca vistos, el agente final logra \val{EfourFinetuneHeartgoldHeldout} en HeartGold y \val{EfourFinetuneNegroTwoHeldout} en Negro~2. Heredar solo el encoder da \val{EfourEncoderCristalNorm}, \val{EfourEncoderEmeraldNorm}, \val{EfourEncoderPlatinoNorm} y \val{EfourEncoderNegroNorm}.
+\textbf{E4, el agente evoluciona de Gen~1 a Gen~5.} Al llegar a cada juego nuevo, el agente ya supera al azar: arranca en \val{EfourFinetuneCristalJump} en Cristal, \val{EfourFinetuneEmeraldJump} en Esmeralda y \val{EfourFinetunePlatinoJump} en Platino. Tras entrenar con el mismo presupuesto que la práctica actual, llega a \val{EfourFinetuneCristalNorm}, \val{EfourFinetuneEmeraldNorm} y \val{EfourFinetunePlatinoNorm} (Fig.~\ref{fig:e4}); en Negro, a \val{EfourFinetuneNegroNorm}. En juegos nunca vistos, el agente final logra \val{EfourFinetuneHeartgoldHeldout} en HeartGold y \val{EfourFinetuneNegroTwoHeldout} en Negro~2. El costo es el olvido: tras el currículo completo, Rojo queda en \val{EfourFinetuneRojoFinal} y Esmeralda en \val{EfourFinetuneEmeraldFinal}.
+
+\begin{figure*}[t]
+\centering
+\figgen{e5_battle.pdf}{0.92\textwidth}
+\caption{E5-combate. (a) Puntaje de test contra Greedy de la propuesta unificada en cada generación (continua), del linaje único con el mismo cómputo (discontinua) y del agente E1 entrenado una sola vez (punteada). (b) Ratings Elo de cada torneo (3 semillas): estrellas = propuestas fusionadas en la propuesta única.}
+\label{fig:e5b}
+\end{figure*}
+
+\begin{table}[t]
+\caption{E5-combate: comparaciones fijadas antes de correr (diferencia de puntaje contra Greedy en test, \val{EfivebSeeds} semillas, permutación pareada, Holm). $^\ast$: generación nunca entrenada por esos agentes.}
+\label{tab:e5b}
+\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\fitcol{\inputgen{tab_e5b.tex}}
+\end{table}
+
+\textbf{E5-combate, propuestas que compiten y se fusionan.} La propuesta unificada mejora en cada generación. En Gen2 pasa de \val{EfivebUZeroGenTwo} (G0) a \val{EfivebUOneGenTwo} (G1) y a \val{EfivebUTwoGenTwo} (G2); en Gen3, de \val{EfivebUZeroGenThree} a \val{EfivebUTwoGenThree} (Fig.~\ref{fig:e5b}). Lo aprendido en Gen~1 no se pierde, sino que mejora: C6 da \val{EfivebCSixDiff} con $p_{\mathrm{Holm}}=\val{EfivebCSixP}$ (Tabla~\ref{tab:e5b}). La destilación se aceptó en \val{EfivebDistillAccepted} de 3 semillas, y la sopa unió más de un hijo en \val{EfivebSoupMulti} de \val{EfivebSoupTotal} generaciones. Frente al linaje único con el mismo cómputo (C2--C4) y frente a E1 en Gen3 (C5), las diferencias no son significativas.
+
+\textbf{E5-exploración.} La propuesta unificada alcanza \val{EfiveNavCristalNorm} en Cristal y \val{EfiveNavEmeraldNorm} en Esmeralda, con 4 propuestas de la mitad del presupuesto de E4 cada una (Fig.~\ref{fig:e4}a). En \val{EfiveNavUnifiedgebest} de \val{EfiveNavGenerations} generaciones iguala o supera a la mejor propuesta individual.
 
 \section{Análisis y discusión}
-\textbf{Patrones que persisten.} En combate, las reglas aprendidas sobre atributos sobreviven a la llegada de especies nuevas; en exploración, una política de GBA explora mejor que el azar en GB, GBC y NDS. Ambos resultados son evidencia de patrones comunes a la saga que una red puede extraer.
-\textbf{Dificultad que crece.} El arranque disminuye con la distancia entre consolas (GBA$\to$GB/GBC frente a GBA$\to$NDS con perspectiva distinta), y el NDS exige más pasos para igualar lo que la práctica actual logra desde cero.
-\textbf{Qué se transfiere.} Heredar solo la percepción pierde el arranque: lo que se transfiere es la conducta (cuándo avanzar diálogos, cómo recorrer pasillos), no solo la representación visual. En E2 (FireRed$\to$Esmeralda, 100k pasos) la transferencia igualó la cobertura del azar en \val{EtwoEmeraldTransferReach} pasos contra \val{EtwoEmeraldScratchReach} desde cero, pero no mejoró el resultado final. Ese límite motiva el currículo con presupuestos cortos.
-\textbf{Techo en combate.} Un planificador Monte Carlo con información completa, que conoce al rival, logra $0.62$ contra Greedy: las ventajas posibles son de pocos puntos, de ahí los tests pareados.
-\textbf{Limitaciones.} Explorar no es avanzar en la historia, y nada aquí equivale a terminar un juego. E1 cambia especies, pero no la mecánica de combate de Gen~4+. Hay 3 semillas en E3/E4; el presupuesto NDS es corto por la velocidad del emulador (${\sim}150$ cuadros/s). Los hiperparámetros de E1 se ajustaron en pilotos que usaron combates de evaluación, aunque ningún checkpoint se eligió sobre el test.
+\textbf{Patrones que persisten.} En combate, reglas aprendidas sobre atributos sobreviven a especies nuevas. En exploración, una política de GBA explora mejor que el azar en GB, GBC y NDS. Ambos resultados indican patrones comunes a la saga que una red puede extraer.
+\textbf{Dificultad que crece y herencia.} El arranque positivo en todos los juegos nuevos y la ganancia sobre entrenar desde cero muestran que heredar la política acelera cada generación. El olvido de juegos previos es el costo: motiva repaso o regularización \cite{kirkpatrick2017ewc}.
+\textbf{Qué aporta la población.} El ciclo de E5 produce una propuesta que mejora generación tras generación y conserva lo anterior. Con el mismo cómputo, sin embargo, no supera a un solo linaje. Los torneos ordenan propuestas casi equivalentes (ratings dentro de $\pm$20 Elo), y en combate el techo es bajo: un planificador con información completa logra solo $0.62$ contra Greedy. Además, ganar el torneo directo no implica ganarle más a Greedy (U0 frente a E1 en Gen1): el orden entre estrategias no es transitivo. El valor práctico de la población está en la robustez (la sopa nunca empeora en validación) y en paralelizar la búsqueda de hiperparámetros, no en un salto de rendimiento.
+\textbf{Limitaciones.} Explorar no es avanzar en la historia, y nada aquí equivale a terminar un juego. E1 y E5-combate cambian especies, no la mecánica de Gen~4+. Hay 3 semillas en E3--E5, y el presupuesto en NDS es corto (${\sim}150$ cuadros/s). Platino requirió una elección manual documentada en el tutorial de inicio.
 
 \section{Conclusiones y trabajo futuro}
-Un agente que solo ve píxeles y oprime los mismos botones puede ejecutarse en 8 juegos de 5 generaciones y reutilizar lo aprendido de una a otra. Esto mejora la práctica actual de entrenar cada juego desde cero. En combate, una representación por atributos generaliza a especies de generaciones futuras. Siguen subobjetivos de historia aprendidos, una política jerárquica con memoria (SSM/xLSTM), un currículo más largo con repaso de juegos previos y combate en el cartucho con la IA de los NPC.
+Un agente que solo ve píxeles y oprime los mismos botones corre en 8 juegos de 5 generaciones y reutiliza lo aprendido de una a otra, superando la práctica actual de entrenar cada juego desde cero. El ciclo proponer--combatir--fusionar--heredar hace explícita esa evolución cognitiva y aplica, en un solo sistema, la transferencia, el aprendizaje adversarial y la computación evolutiva del curso. Siguen el repaso de generaciones previas contra el olvido, la fusión entre escuelas con alineación de permutaciones, subobjetivos de historia aprendidos y el combate en el cartucho.
 
 \bibliographystyle{IEEEtran}
 % generated/refs.bib = docs/investigacion/referencias.bib sin las URLs de arXiv (el ID ya las identifica).

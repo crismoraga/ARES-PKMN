@@ -319,8 +319,42 @@ def e3_assets(run: Path, out: Path, figs: Path, macros: Macros) -> None:
 
 E4_TITLES = {"rojo": "Rojo\nG1", "cristal": "Cristal\nG2", "emerald": "Esmeralda\nG3", "platino": "Platino\nG4",
              "negro": "Negro\nG5", "heartgold": "HeartGold\nG4*", "negro2": "Negro 2\nG5*"}
-E4_COLORS = {"finetune": "#B3261E", "encoder": "#1A73E8"}
+E4_COLORS = {"finetune": "#B3261E", "encoder": "#1A73E8", "evolution": "#7B1FA2"}
 E4_LABELS = {"finetune": "Currículo: hereda la política", "encoder": "Ablación: hereda solo el encoder"}
+
+
+def e5_nav_normalised(e4: dict[str, Any]) -> dict[str, Any]:
+    """E5-exploration unified agents, normalised with the E4 baselines (random = 0, per-game scratch = 1)."""
+    path = ROOT / "artifacts/ares_u/e5/summary.json"
+    if not path.exists():
+        return {}
+    records: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
+    baselines = e4.get("baselines", {})
+
+    def norm(game: str, value: float) -> float | None:
+        rnd, scr = baselines.get(game, {}).get("random", []), baselines.get(game, {}).get("scratch", [])
+        if not rnd or not scr or np.mean(scr) == np.mean(rnd):
+            return None
+        return float((value - np.mean(rnd)) / (np.mean(scr) - np.mean(rnd)))
+
+    trained: dict[str, list[float]] = {}
+    jump: dict[str, list[float]] = {}
+    multi = total = beat = 0
+    for record in records:
+        trained.setdefault(record["game"], []).append(record["test"]["unified"]["mean"])
+        for game, entry in record["zero_shot_next"].items():
+            jump.setdefault(game, []).append(entry["mean"])
+        total += 1
+        multi += int(len(record["soup_members"]) > 1)
+        beat += int(record["test"]["unified"]["mean"] >= record["test"]["best_proposal"]["mean"])
+    result: dict[str, Any] = {"trained": {}, "jump": {}, "counts": {"generations": total, "soups": multi,
+                                                                     "unifiedgebest": beat}}
+    for key, source in (("trained", trained), ("jump", jump)):
+        for game, values in source.items():
+            value = norm(game, float(np.mean(values)))
+            if value is not None:
+                result[key][game] = value
+    return result
 
 
 def e4_assets(summary: dict[str, Any], figs: Path, macros: Macros) -> None:
@@ -332,9 +366,14 @@ def e4_assets(summary: dict[str, Any], figs: Path, macros: Macros) -> None:
 
     chain: list[str] = summary["chain"]
     held: list[str] = summary["held_out"]
-    transfers: dict[str, Any] = summary.get("transfer", {})
+    # The encoder-only chain was stopped after two stages to free the CPU for E5; its ablation is the
+    # E3 "encoder" column, so only the full-policy curriculum is drawn here.
+    transfers: dict[str, Any] = {k: v for k, v in summary.get("transfer", {}).items() if k == "finetune"}
     if not transfers:
         return
+    seeds_done = [s for s in summary.get("seeds", [])
+                  if (ROOT / "artifacts/ares_u/e4/finetune" / f"seed{s}" / f"after{len(chain) - 1}_on_{held[-1]}.json").exists()]
+    macros.add("EfourSeeds", str(len(seeds_done)))
     plt.rcParams.update({"font.size": 7, "axes.linewidth": 0.6})
     figure, (left, right) = plt.subplots(1, 2, figsize=(7.1, 2.4), gridspec_kw={"width_ratios": [1.15, 1]})
     xs = np.arange(len(chain))
@@ -355,10 +394,28 @@ def e4_assets(summary: dict[str, Any], figs: Path, macros: Macros) -> None:
                 if before is not None:
                     macros.add(macro_name("Efour", transfer, game, "jump"), f"{before:.2f}")
         last = str(len(chain) - 1)
+        for game in chain[:-1]:  # retention: score on an earlier game after the whole curriculum
+            value = normalised.get(last, {}).get(game)
+            if value is not None:
+                macros.add(macro_name("Efour", transfer, game, "final"), f"{value:.2f}")
         for game in held:
             value = normalised.get(last, {}).get(game)
             if value is not None:
                 macros.add(macro_name("Efour", transfer, game, "heldout"), f"{value:.2f}")
+    evolution = e5_nav_normalised(summary)
+    if evolution:
+        trained = [evolution["trained"].get(game, np.nan) for game in chain]
+        jump = [np.nan] + [evolution["jump"].get(game, np.nan) for game in chain[1:]]
+        color = E4_COLORS["evolution"]
+        left.plot(xs, trained, "-D", color=color, ms=2.8, lw=1.2,
+                  label="Evolución E5: 4 propuestas, duelos y sopa (tras entrenar)")
+        left.plot(xs, jump, "--v", color=color, ms=2.8, lw=0.9, alpha=0.8, label="  al llegar (zero-shot)")
+        for game, value in evolution["trained"].items():
+            macros.add(macro_name("Efive", "nav", game, "norm"), f"{value:.2f}")
+        for game, value in evolution["jump"].items():
+            macros.add(macro_name("Efive", "nav", game, "jump"), f"{value:.2f}")
+        for key, value in evolution["counts"].items():
+            macros.add(macro_name("Efive", "nav", key), str(value))
     left.axhline(1.0, color="#5F6368", ls=":", lw=0.8)
     left.axhline(0.0, color="#9AA0A6", ls=":", lw=0.6)
     left.text(len(chain) - 1, 1.03, "práctica actual: cada juego desde cero", ha="right", fontsize=6, color="#5F6368")
@@ -398,6 +455,80 @@ def e4_assets(summary: dict[str, Any], figs: Path, macros: Macros) -> None:
             macros.add(macro_name("Efour", game, "scratch"), f"{np.mean(scr):.0f}")
 
 
+E5B_SPLITS = ("gen1_train", "gen2", "gen3")
+UNSEEN = "$^\\ast$"
+E5B_SPLIT = {"gen1_train": "Gen1", "gen2": "Gen2", "gen3": "Gen3"}
+E5B_NAMES = {"C1": "U$_1$ $-$ E1", "C2": "U$_1$ $-$ L$_1$", "C3": "U$_1$ $-$ L$_1$", "C4": "U$_2$ $-$ L$_2$",
+             "C5": "U$_2$ $-$ E1", "C6": "U$_2$ $-$ U$_0$"}
+
+
+def e5_battle_assets(summary: dict[str, Any], out: Path, figs: Path, macros: Macros) -> None:
+    """E5-combate: evolution figure (score per generation + tournament ratings), comparison table, macros."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    scores = summary["vs_greedy"]
+    for agent, row in scores.items():
+        for split in E5B_SPLITS:
+            macros.add(macro_name("Efiveb", agent, split), f"{row[split]['mean']:.3f}")
+    for item in summary["comparisons"]:
+        macros.add(macro_name("Efiveb", item["id"], "diff"), f"{item['diff']:+.3f}")
+        macros.add(macro_name("Efiveb", item["id"], "p"), fmt_p(item["p_holm"]))
+    macros.add("EfivebSeeds", str(len(summary["seeds"])))
+    lines = ["\\begin{tabular}{llrcr}", "\\toprule",
+             "Comparación & Split & Dif. & IC 95\\% & $p_{\\mathrm{Holm}}$ \\\\", "\\midrule"]
+    for item in summary["comparisons"]:
+        lines.append(f"{item['id']}: {E5B_NAMES.get(item['id'], item['id'])} & "
+                     f"{E5B_SPLIT[item['split']]}{UNSEEN if item['id'] == 'C3' else ''} & "
+                     f"{item['diff']:+.3f} & [{item['ci'][0]:+.3f}, {item['ci'][1]:+.3f}] & {fmt_p(item['p_holm'])} \\\\")
+    lines += ["\\bottomrule", "\\end{tabular}"]
+    (out / "tab_e5b.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    accepted = sum(1 for gens in summary["generations"].values() if gens[0]["accepted"])
+    macros.add("EfivebDistillAccepted", str(accepted))
+    soups = [len(gens[g]["soup"]) for gens in summary["generations"].values() for g in (1, 2)]
+    macros.add("EfivebSoupMulti", str(sum(1 for size in soups if size > 1)))
+    macros.add("EfivebSoupTotal", str(len(soups)))
+
+    plt.rcParams.update({"font.size": 7, "axes.linewidth": 0.6})
+    figure, (left, right) = plt.subplots(1, 2, figsize=(7.1, 2.3), gridspec_kw={"width_ratios": [1.2, 1]})
+    colors = {"gen1_train": "#1A73E8", "gen2": "#E8710A", "gen3": "#188038"}
+    xs = np.arange(3)
+    for split in E5B_SPLITS:
+        unified = [scores[f"U{g}"][split]["mean"] for g in range(3)]
+        lineal = [scores["U0"][split]["mean"], scores["L1"][split]["mean"], scores["L2"][split]["mean"]]
+        left.plot(xs, unified, "-o", color=colors[split], ms=3.5, lw=1.4, label=f"Evolución, {E5B_SPLIT[split]}")
+        left.plot(xs, lineal, "--s", color=colors[split], ms=2.5, lw=0.8, alpha=0.6)
+        left.axhline(scores["E1"][split]["mean"], color=colors[split], ls=":", lw=0.7, alpha=0.7)
+    left.plot([], [], "--s", color="#5F6368", ms=2.5, lw=0.8, label="Linaje único (mismo cómputo)")
+    left.plot([], [], ":", color="#5F6368", lw=0.7, label="E1 (práctica: entrenar una vez)")
+    left.set_xticks(xs, ["G0: torneo E1\n+ destilación", "G1: hijos en Gen2\n+ sopa", "G2: hijos en Gen3\n+ sopa"])
+    left.set_ylabel("Puntaje vs Greedy (test)")
+    left.legend(fontsize=5, frameon=False, loc="upper left", ncol=2)
+    left.spines[["top", "right"]].set_visible(False)
+    offsets = np.linspace(-0.25, 0.25, max(1, len(summary["generations"])))
+    for k, (seed, gens) in enumerate(sorted(summary["generations"].items())):
+        for g, entry in enumerate(gens):
+            members = entry["soup"] if g > 0 else ([entry["champion"]] + (entry["top"][1:3] if entry["accepted"] else []))
+            for name, rating in entry["ratings"].items():
+                chosen = name in members
+                marker = "*" if chosen else ("D" if name == "parent" else "o")
+                right.scatter(g + offsets[k], rating, s=22 if chosen else 7, marker=marker,
+                              color="#B3261E" if chosen else ("#111827" if name == "parent" else "#9AA0A6"),
+                              zorder=3 if chosen else 2, linewidths=0)
+    right.scatter([], [], marker="*", s=22, color="#B3261E", label="fusionadas en la propuesta única")
+    right.scatter([], [], marker="o", s=7, color="#9AA0A6", label="propuestas descartadas")
+    right.scatter([], [], marker="D", s=7, color="#111827", label="padre (generación anterior)")
+    right.set_xticks(xs, ["G0 (10)", "G1 (4+padre)", "G2 (4+padre)"])
+    right.set_ylabel("Rating Elo del torneo (validación)")
+    right.legend(fontsize=5, frameon=False, loc="upper right")
+    right.spines[["top", "right"]].set_visible(False)
+    figure.tight_layout(pad=0.4)
+    figure.savefig(figs / "e5_battle.pdf")
+    plt.close(figure)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--e1", type=Path, default=ROOT / "artifacts/ares_u/battle/final")
@@ -427,6 +558,11 @@ def main(argv: list[str] | None = None) -> None:
         e4_assets(json.loads(e4_summary.read_text(encoding="utf-8")), figs, macros)
     else:
         print(f"[skip] E4: {e4_summary} missing")
+    e5b_summary = ROOT / "artifacts/ares_u/e5_battle/summary.json"
+    if e5b_summary.exists():
+        e5_battle_assets(json.loads(e5b_summary.read_text(encoding="utf-8")), generated, figs, macros)
+    else:
+        print(f"[skip] E5-combate: {e5b_summary} missing")
     (generated / "numbers.tex").write_text(macros.text(), encoding="utf-8")
     print(generated)
 
