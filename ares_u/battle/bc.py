@@ -28,7 +28,7 @@ import numpy as np
 import torch
 from numpy.typing import NDArray
 
-from .model import EntityTransformer, build_policy, to_numpy
+from .model import EntityTransformer, Weights, build_policy, load_numpy, to_numpy
 from .ppo import INPUT_KEYS, _seed_everything, make_optimizer, minibatches, save_checkpoint, set_lr, upload
 from .rollout import WorkerPool
 from .training import (QUICK_OPPONENTS, QUICK_SPLITS, MetricsLog, Timer, device_label, linear, quick_eval,
@@ -58,6 +58,7 @@ class BCConfig:
     workers: int = 14
     concurrency: int = 32
     eval_battles: int = 200
+    generation: int = 1              # species pool of the demonstration teams (evolution only)
     device: str = "dml"
 
     def to_json(self) -> dict[str, Any]:
@@ -70,11 +71,14 @@ class BCConfig:
         return {key: getattr(self, key) for key in keys}
 
 
-def collect_demonstrations(pool: WorkerPool, config: BCConfig) -> tuple[dict[str, NDArray[Any]], list[dict[str, Any]]]:
+def collect_demonstrations(pool: WorkerPool, config: BCConfig, teachers: dict[str, dict[str, Any]] | None = None
+                           ) -> tuple[dict[str, NDArray[Any]], list[dict[str, Any]]]:
+    """``teachers``: neural experts/opponents by name (agent specs, e.g. an ``ensemble``) for distillation."""
     per_worker = max(64, config.demo_steps // pool.size)
     results = pool.broadcast([{"type": "demos", "seed": config.seed, "chunk": worker, "steps": per_worker,
                                "experts": config.experts, "opponents": config.opponents, "gamma": config.gamma,
-                               "concurrency": config.concurrency} for worker in range(pool.size)])
+                               "concurrency": config.concurrency, "generation": config.generation,
+                               "teachers": teachers or {}} for worker in range(pool.size)])
     data = {key: np.concatenate([result[key] for result in results]) for key in DEMO_KEYS}
     return data, [item for result in results for item in result["stats"]]
 
@@ -118,15 +122,20 @@ def _validate(model: EntityTransformer, data: dict[str, NDArray[Any]], index: ND
     return result
 
 
-def train_bc(config: BCConfig, out: Path, pool: WorkerPool | None = None) -> Path:
+def train_bc(config: BCConfig, out: Path, pool: WorkerPool | None = None, init_weights: Weights | None = None,
+             teachers: dict[str, dict[str, Any]] | None = None) -> Path:
     """Collect demonstrations, behaviour-clone, quick-evaluate; writes ``final.pt`` under ``out``.
 
-    The checkpoint metadata records ``demo_steps`` (= environment steps consumed) for budgets.
+    The checkpoint metadata records ``demo_steps`` (= environment steps consumed) for budgets. With
+    ``init_weights`` and ``teachers`` this is policy distillation into an existing student.
     """
     out.mkdir(parents=True, exist_ok=True)
     _seed_everything(config.seed)
     device = resolve_device(config.device)
-    model = build_policy(config.method).to(device)
+    network = build_policy(config.method)
+    if init_weights is not None:
+        load_numpy(network, init_weights)
+    model = network.to(device)
     optimizer = make_optimizer(model, config.lr)
     rng = np.random.default_rng(config.seed)
     log = MetricsLog(out / "metrics.jsonl")
@@ -139,7 +148,7 @@ def train_bc(config: BCConfig, out: Path, pool: WorkerPool | None = None) -> Pat
     timer = Timer()
     names = list(config.experts)
     try:
-        data, stats = collect_demonstrations(workers, config)
+        data, stats = collect_demonstrations(workers, config, teachers)
         demo_steps = int(data["act"].shape[0])
         collect_s = timer.elapsed()
         by_pair: dict[str, list[float]] = defaultdict(list)
@@ -175,10 +184,11 @@ def train_bc(config: BCConfig, out: Path, pool: WorkerPool | None = None) -> Pat
             log.write({"kind": "bc", "epoch": epoch, "steps": demo_steps, "wall": round(timer.elapsed(), 2),
                        **record})
         model.eval()
-        evaluation = quick_eval(workers, config.method, to_numpy(model), QUICK_SPLITS, QUICK_OPPONENTS,
-                                config.eval_battles)
-        log.write({"kind": "eval", "iteration": -1, "steps": demo_steps, "wall": round(timer.elapsed(), 2),
-                   **evaluation})
+        if config.eval_battles > 0:
+            evaluation = quick_eval(workers, config.method, to_numpy(model), QUICK_SPLITS, QUICK_OPPONENTS,
+                                    config.eval_battles)
+            log.write({"kind": "eval", "iteration": -1, "steps": demo_steps, "wall": round(timer.elapsed(), 2),
+                       **evaluation})
     finally:
         if owned:
             workers.close()

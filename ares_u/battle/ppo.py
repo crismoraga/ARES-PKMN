@@ -82,6 +82,8 @@ class PPOConfig:
     eval_battles: int = 200
     pipeline: bool = True
     init: str = ""                   # checkpoint the policy starts from ("" = random init)
+    generation: int = 1              # species pool of the training teams (2/3 only in the evolution)
+    rivals: tuple[str, ...] = ()     # names of the pinned frozen rivals in the league (evolution)
     device: str = "dml"
 
     def to_json(self) -> dict[str, Any]:
@@ -291,7 +293,7 @@ def _seed_everything(seed: int) -> None:
 
 
 def train_ppo(config: PPOConfig, out: Path, pool: WorkerPool | None = None,
-              init_weights: Weights | None = None) -> Path:
+              init_weights: Weights | None = None, rivals: dict[str, Weights] | None = None) -> Path:
     """Train one seed; writes ``metrics.jsonl``, ``config.json`` and checkpoints under ``out``.
 
     Any previous ``metrics.jsonl`` in ``out`` is replaced (an unfinished run restarts from scratch).
@@ -314,6 +316,8 @@ def train_ppo(config: PPOConfig, out: Path, pool: WorkerPool | None = None,
     owned = pool is None
     workers = pool if pool is not None else WorkerPool(config.workers)
     league = League(config.league_size, workers.size)
+    for key, weights in (rivals or {}).items():  # adversarial league: the other proposals, frozen
+        league.add(f"rival:{key}", weights, pinned=True)
     timer = Timer()
     steps, iteration = config.step_offset, 0
     eval_every = max(1, (config.total_steps - config.step_offset) // max(1, config.evals))
@@ -337,11 +341,13 @@ def train_ppo(config: PPOConfig, out: Path, pool: WorkerPool | None = None,
         workers.submit([{"type": "rollout", "method": config.method, "weights": weights, "seed": config.seed,
                          "iteration": at_iteration, "worker": worker, "steps": per_worker, "mix": config.mix,
                          "snapshots": league.shipment(worker), "snapshot_keys": list(league.order),
-                         "gamma": config.gamma, "lam": config.lam, "concurrency": config.concurrency}
+                         "gamma": config.gamma, "lam": config.lam, "concurrency": config.concurrency,
+                         "generation": config.generation}
                         for worker in range(workers.size)])
 
     try:
-        evaluate_now(-1)  # starting point of the learning curve (random init or the BC policy)
+        if config.evals > 0:
+            evaluate_now(-1)  # starting point of the learning curve (random init or the BC policy)
         if steps < config.total_steps:
             submit(0)
         while workers.pending:
@@ -353,7 +359,7 @@ def train_ppo(config: PPOConfig, out: Path, pool: WorkerPool | None = None,
             progress = config.progress(steps)
             steps += batch_steps
             done = steps >= config.total_steps
-            eval_due = steps >= next_eval or done
+            eval_due = config.evals > 0 and (steps >= next_eval or done)
             if config.pipeline and not done and not eval_due:
                 submit(iteration + 1)  # behaviour policy = the pre-update weights (one-iteration lag)
             lr = linear(config.lr, config.lr * config.lr_end_frac, progress)

@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from .agents import Controller, HeuristicController, PolicyController, QController, make_neural
+from .agents import Controller, EnsembleController, HeuristicController, PolicyController, QController, make_neural
 from .env import BattleEnv, SideCounters
 from .model import Weights
 from .obs import Observation, flat, stack
@@ -72,7 +72,7 @@ def rollout(task: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     method: str = task["method"]
     dex = default_dex()
     rng = random.Random(f"rollout/{task['seed']}/{state['worker_id']}/{task['iteration']}")
-    sampler = TrainTeamSampler(dex, random.Random(rng.random()))
+    sampler = TrainTeamSampler(dex, random.Random(rng.random()), int(task.get("generation", 1)))
     learner = _learner(state, method, task["weights"], float(task.get("epsilon", 0.0)))
     snapshots = _snapshots(state, method, task.get("snapshots", {}), list(task.get("snapshot_keys", [])))
     available = [key for key in task.get("snapshot_keys", []) if key in snapshots]
@@ -136,8 +136,11 @@ def demos(task: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     """
     dex = default_dex()
     rng = random.Random(f"demos/{task['seed']}/{state['worker_id']}/{task['chunk']}")
-    sampler = TrainTeamSampler(dex, random.Random(rng.random()))
+    sampler = TrainTeamSampler(dex, random.Random(rng.random()), int(task.get("generation", 1)))
     heuristics = _heuristics(state)
+    # Neural teachers (distillation of an ensemble): name -> agent spec, playable as expert or opponent.
+    players: dict[str, Controller] = {**heuristics, **{name: _agent({**spec, "name": name}, state)
+                                                      for name, spec in dict(task.get("teachers", {})).items()}}
     experts: dict[str, float] = dict(task["experts"])
     opponents: dict[str, float] = dict(task["opponents"])
     expert_names = list(experts)
@@ -151,7 +154,7 @@ def demos(task: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         opponent = rng.choices(list(opponents), weights=list(opponents.values()), k=1)[0]
         side = rng.randrange(2)
         env = BattleEnv(dex, sampler.team(), sampler.team(), rng.randrange(2 ** 31))
-        pair: tuple[Controller, Controller] = (heuristics[expert], heuristics[opponent])
+        pair: tuple[Controller, Controller] = (players[expert], players[opponent])
         controllers = pair if side == 0 else (pair[1], pair[0])
         record = (controllers[0].name in experts, controllers[1].name in experts)
         return Episode(env, controllers, record, {"expert": expert, "opponent": opponent, "expert_side": side})
@@ -203,6 +206,9 @@ def _transitions(trajectories: list[Any], gamma: float) -> dict[str, Any]:
 def _agent(task_agent: dict[str, Any], state: dict[str, Any]) -> Controller:
     if "heuristic" in task_agent:
         return _heuristics(state)[str(task_agent["heuristic"])]
+    if "ensemble" in task_agent:  # unified proposal before distillation: mean of the members' policies
+        return EnsembleController(list(task_agent["ensemble"]), str(task_agent.get("name", "ensemble")),
+                                  bool(task_agent.get("greedy", True)))
     if "lookahead" in task_agent:  # analysis-only full-information planner (``headroom``)
         from .headroom import LookaheadController
 

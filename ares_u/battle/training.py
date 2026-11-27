@@ -47,11 +47,17 @@ class League:
     def __post_init__(self) -> None:
         self.sent = [set() for _ in range(self.workers)]
 
-    def add(self, key: str, weights: Weights) -> None:
+    pinned: set[str] = field(default_factory=set)
+
+    def add(self, key: str, weights: Weights, pinned: bool = False) -> None:
+        """``pinned`` members (rivals of the generational evolution) are never evicted."""
         self.snapshots[key] = weights
         self.order.append(key)
-        while len(self.order) > self.capacity:
-            oldest = self.order.pop(0)
+        if pinned:
+            self.pinned.add(key)
+        while len(self.order) > self.capacity + len(self.pinned):
+            oldest = next(k for k in self.order if k not in self.pinned)
+            self.order.remove(oldest)
             del self.snapshots[oldest]
 
     def shipment(self, worker: int) -> dict[str, Weights]:

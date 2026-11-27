@@ -169,13 +169,18 @@ def eval_team(dex: Dex, split: Split, index: int, side: int) -> list[MonSpec]:
 
 @dataclass
 class TrainTeamSampler:
-    """Training teams: Gen1 species, never one of the held-out species sets."""
+    """Training teams of one generation's species (default Gen1, never one of the held-out species sets).
+
+    ``generation`` 2/3 is used only by the generational evolution (``scripts.ares_u_e5_battle``), which
+    trains on Gen2 and then Gen3 species after measuring the zero-shot score on them.
+    """
     dex: Dex
     rng: random.Random
+    generation: int = 1
 
     def __post_init__(self) -> None:
-        self.pool = species_pool(self.dex, 1)
-        self.forbidden = heldout_signatures(self.dex)
+        self.pool = species_pool(self.dex, self.generation)
+        self.forbidden = heldout_signatures(self.dex) if self.generation == 1 else frozenset()
 
     def team(self) -> list[MonSpec]:
         return random_team(self.dex, self.pool, self.rng, forbidden=self.forbidden)

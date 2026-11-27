@@ -114,6 +114,35 @@ class PolicyController:
         return choices
 
 
+class EnsembleController:
+    """Several entity Transformers acting as one: the mean of their action distributions.
+
+    The teacher of the distillation step of the generational evolution (the members have different
+    initialisations, so their weights cannot be averaged; their *behaviour* can).
+    """
+    wants_obs = True
+
+    def __init__(self, members: list[Weights], name: str = "ensemble", greedy: bool = True) -> None:
+        self.members = [PolicyController("ppo", weights, greedy, f"{name}/{i}") for i, weights in enumerate(members)]
+        self.greedy, self.name = greedy, name
+
+    def choose(self, decisions: list[Decision], rng: random.Random) -> list[Choice]:
+        if not decisions:
+            return []
+        observations = [item.obs for item in decisions]
+        if any(obs is None for obs in observations):
+            raise ValueError("ensemble controller needs observations")
+        batch = stack([obs for obs in observations if obs is not None])
+        outputs = [policy_numpy(member.model, batch) for member in self.members]
+        probs = np.mean([p for p, _ in outputs], axis=0)
+        values = np.mean([v for _, v in outputs], axis=0)
+        choices: list[Choice] = []
+        for row, value in zip(probs, values):
+            action = int(np.argmax(row)) if self.greedy else _sample(row, rng)
+            choices.append(Choice(action, float(np.log(max(row[action], 1e-12))), float(value)))
+        return choices
+
+
 class QController:
     """DQN agent: epsilon-greedy over masked Q-values."""
     wants_obs = True
