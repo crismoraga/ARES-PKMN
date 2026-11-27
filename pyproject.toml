@@ -20,7 +20,7 @@ ares-verify = "scripts.verify_installation:main"
 ares-setup = "scripts.setup_environment:main"
 
 [tool.setuptools.packages.find]
-include = ["core*", "scripts*"]
+include = ["core*", "scripts*", "ares_u*"]
 
 [tool.setuptools.package-data]
 scripts = ["dashboard_static/*.html"]

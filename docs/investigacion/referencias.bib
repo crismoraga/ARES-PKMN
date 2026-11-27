@@ -1,0 +1,739 @@
+% referencias.bib -- Proyecto IPD434 ARES-U (generado 2026-11-24, verificado 2026-11-24)
+% Fuente inicial: docs/investigacion/notas/*.md.
+% Verificacion: todas las entradas con ID de arXiv se contrastaron con la API de arXiv
+% (export.arxiv.org/api/query): titulo, autores, fecha y comentario del autor sobre la sede.
+% Repositorios: API de GitHub (gh api). Blogs y posts: la pagina original (LessWrong via su
+% API GraphQL; TechCrunch via la copia de web.archive.org porque el sitio exige un desafio).
+% Sedes confirmadas en fuente primaria: ICML 2025 y ICLR 2026 (listas oficiales de la
+% conferencia), CVPR 2026 (openaccess.thecvf.com), NeurIPS 2021 (proceedings.neurips.cc);
+% las demas sedes provienen del comentario del autor en arXiv.
+% Convenciones: hasta 6 autores se listan todos; con mas de 6 se listan 6 y "and others".
+% Una entrada que no se pudiera confirmar llevaria note = {NO VERIFICADO: <motivo>}.
+% Para IEEEtran: \bibliographystyle{IEEEtran} \bibliography{referencias}
+% Requiere \usepackage{url} (o hyperref) en el preambulo: varias URL tienen "_".
+% Los campos eprint, archivePrefix y urldate los ignora IEEEtran.bst; sirven para biblatex.
+
+% ==================== Curso / protocolo ====================
+
+@inproceedings{anne2026tournament,
+  author    = {Anne, Timoth{\'e}e and Syrkis, Noah and Elhosni, Meriem and Turati, Florian and Manai, Alexandre and Legendre, Franck and others},
+  title     = {Tournament Informed Adversarial Quality Diversity},
+  booktitle = {Proc. Genetic and Evolutionary Computation Conference (GECCO '26)},
+  address   = {San Jos{\'e}, Costa Rica},
+  year      = {2026},
+  doi       = {10.1145/3795095.3805154},
+  eprint    = {2601.19562},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2601.19562}
+}
+
+% ==================== RL en Pokemon ====================
+
+@article{pleines2025pokemonred,
+  author  = {Pleines, Marco and Addis, Daniel and Rubinstein, David and Zimmer, Frank and Preuss, Mike and Whidden, Peter},
+  title   = {{Pokemon Red} via Reinforcement Learning},
+  journal = {arXiv preprint arXiv:2502.19920},
+  year    = {2025},
+  eprint  = {2502.19920},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2502.19920}
+}
+
+@article{mudireddy2026pokerl,
+  author  = {Mudireddy, Dheeraj and Patibandla, Sai},
+  title   = {{PokeRL}: Reinforcement Learning for {Pokemon Red}},
+  journal = {arXiv preprint arXiv:2604.10812},
+  year    = {2026},
+  eprint  = {2604.10812},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2604.10812}
+}
+
+@misc{rubinstein2025pokerl,
+  author  = {Rubinstein, David and Donovan, Keelan and Addis, Daniel and Choe, Kyoung Whan and Suarez, Joseph and Whidden, Peter},
+  title   = {Learning {Pok{\'e}mon} With Reinforcement Learning},
+  year    = {2025},
+  howpublished = {Sitio web del proyecto PokeRL (v1)},
+  month   = {mar.},
+  url     = {https://drubinstein.github.io/pokerl/},
+  urldate = {2026-11-24},
+  note    = {C{\'o}digo: \url{https://github.com/drubinstein/pokemonred_puffer}}
+}
+
+@misc{whidden2023pokemonred,
+  author  = {Whidden, Peter},
+  title   = {{PokemonRedExperiments}: Playing {Pok{\'e}mon Red} with Reinforcement Learning},
+  year    = {2023},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/PWhiddy/PokemonRedExperiments},
+  urldate = {2026-11-24},
+  note    = {Video asociado: ``Training {AI} to Play {Pokemon} with Reinforcement Learning'', 8 de octubre de 2023, \url{https://youtu.be/DcYLT37ImBY}}
+}
+
+@misc{pufferai2024pokegym,
+  author  = {{PufferAI}},
+  title   = {{PokeGym}: {Gymnasium} Environment for {Pok{\'e}mon Red}},
+  year    = {2024},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/PufferAI/pokegym},
+  urldate = {2026-11-24}
+}
+
+@inproceedings{campese2026jepa,
+  author    = {Campese, Stefano and Moschitti, Alessandro},
+  title     = {From Offline Trajectories to Online Adaptation: A Multimodal {JEPA} Pretraining Study on {Pokemon Red}},
+  booktitle = {ICML 2026 Workshop on Decision-Making from Offline Datasets to Online Adaptation: Black-Box Optimization to Reinforcement Learning},
+  year      = {2026},
+  url       = {https://openreview.net/forum?id=8li5NOHh9S},
+  urldate   = {2026-11-24},
+  note      = {P{\'o}ster de workshop; t{\'\i}tulo y autores seg{\'u}n \url{https://icml.cc/virtual/2026/83721}}
+}
+
+% ==================== Benchmarks y competencias ====================
+
+@article{karten2026pokeagent,
+  author  = {Karten, Seth and Grigsby, Jake and Upaa, Tersoo and Bae, Junik and Hong, Seonghun and Jeong, Hyunyoung and others},
+  title   = {The {PokeAgent} Challenge: Competitive and Long-Context Learning at Scale},
+  journal = {arXiv preprint arXiv:2603.15563},
+  year    = {2026},
+  eprint  = {2603.15563},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2603.15563},
+  note    = {NeurIPS 2025 Competition Track}
+}
+
+@misc{pokeagent2025site,
+  author  = {{PokeAgent Challenge Organizers}},
+  title   = {{Pok{\'e}Agent} Challenge ({NeurIPS} 2025)},
+  year    = {2025},
+  howpublished = {Sitio web de la competencia},
+  url     = {https://pokeagentchallenge.com},
+  urldate = {2026-11-24}
+}
+
+@inproceedings{hu2025lmgame,
+  author    = {Hu, Lanxiang and Huo, Mingjia and Zhang, Yuxuan and Yu, Haoyang and Xing, Eric P. and Stoica, Ion and others},
+  title     = {{lmgame-Bench}: How Good are {LLMs} at Playing Games?},
+  booktitle = {Proc. International Conference on Learning Representations (ICLR)},
+  year      = {2026},
+  eprint    = {2505.15146},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2505.15146}
+}
+
+@article{krafton2025orak,
+  author  = {Park, Dongmin and Kim, Minkyu and Choi, Beongjun and Kim, Junhyuck and Lee, Keon and Lee, Jonghyun and others},
+  title   = {Orak: A Foundational Benchmark for Training and Evaluating {LLM} Agents on Diverse Video Games},
+  journal = {arXiv preprint arXiv:2506.03610},
+  year    = {2025},
+  eprint  = {2506.03610},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2506.03610}
+}
+
+@article{zhang2025videogamebench,
+  author  = {Zhang, Alex L. and Griffiths, Thomas L. and Narasimhan, Karthik R. and Press, Ofir},
+  title   = {{VideoGameBench}: Can Vision-Language Models Complete Popular Video Games?},
+  journal = {arXiv preprint arXiv:2505.18134},
+  year    = {2025},
+  eprint  = {2505.18134},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2505.18134}
+}
+
+@article{pokegym2026legends,
+  author  = {Zhang, Ruizhi and Huang, Ye and Pan, Yuangang and Shen, Chuanfu and Liu, Zhilin and Xie, Ting and others},
+  title   = {Mastering {PokeGym}: Graph-Guided Multimodal Evolution at Test Time},
+  journal = {arXiv preprint arXiv:2604.08340},
+  year    = {2026},
+  eprint  = {2604.08340},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2604.08340},
+  note    = {Introduce el benchmark PokeGym sobre {Pok{\'e}mon Legends: Z-A}}
+}
+
+@article{pokejax2026,
+  author  = {Karten, Seth and Appapogu, Rahul Dev and Jin, Chi},
+  title   = {Automatic Generation of High-Performance {RL} Environments},
+  journal = {arXiv preprint arXiv:2603.12145},
+  year    = {2026},
+  eprint  = {2603.12145},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2603.12145},
+  note    = {Introduce {PokeJAX} y {EmuRust}}
+}
+
+% ==================== Battle AI ====================
+
+@inproceedings{grigsby2025metamon,
+  author    = {Grigsby, Jake and Xie, Yuqi and Sasek, Justin and Zheng, Steven and Zhu, Yuke},
+  title     = {Human-Level Competitive {Pok{\'e}mon} via Scalable Offline Reinforcement Learning with Transformers},
+  booktitle = {Proc. Reinforcement Learning Conference (RLC)},
+  year      = {2025},
+  eprint    = {2504.04395},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2504.04395}
+}
+
+@misc{metamon2026repo,
+  author  = {{UT Austin Robot Perception and Learning Lab}},
+  title   = {metamon: {Pok{\'e}mon Showdown} {RL} Agents and Datasets},
+  year    = {2026},
+  howpublished = {Repositorio de GitHub (c{\'o}digo, modelos y datasets)},
+  url     = {https://github.com/UT-Austin-RPL/metamon},
+  urldate = {2026-11-24}
+}
+
+@inproceedings{karten2025pokechamp,
+  author    = {Karten, Seth and Nguyen, Andy Luu and Jin, Chi},
+  title     = {{Pok{\'e}Champ}: an Expert-level Minimax Language Agent},
+  booktitle = {Proc. International Conference on Machine Learning (ICML)},
+  year      = {2025},
+  eprint    = {2503.04094},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2503.04094}
+}
+
+@article{hu2024pokellmon,
+  author  = {Hu, Sihao and Huang, Tiansheng and Liu, Ling},
+  title   = {{PokeLLMon}: A Human-Parity Agent for {Pokemon} Battles with Large Language Models},
+  journal = {arXiv preprint arXiv:2402.01118},
+  year    = {2024},
+  eprint  = {2402.01118},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2402.01118}
+}
+
+@inproceedings{angliss2025vgcbench,
+  author    = {Angliss, Cameron and Cui, Jiaxun and Hu, Jiaheng and Rahman, Arrasy and Stone, Peter},
+  title     = {{VGC-Bench}: Towards Mastering Diverse Team Strategies in Competitive {Pok{\'e}mon}},
+  booktitle = {Proc. International Conference on Autonomous Agents and Multiagent Systems (AAMAS)},
+  year      = {2026},
+  eprint    = {2506.10326},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2506.10326}
+}
+
+@article{yu2026pokaitrainer,
+  author  = {Yu, Max},
+  title   = {{PokaiTrainer}: Scaling Equilibrium Search to Competitive {Pok{\'e}mon} {VGC}},
+  journal = {arXiv preprint arXiv:2608.29197},
+  year    = {2026},
+  eprint  = {2608.29197},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2608.29197},
+  note    = {T{\'\i}tulo de la versi{\'o}n v2}
+}
+
+@inproceedings{porimon2026,
+  author    = {Zhuo, Dongyin and Pan, Fengjunjie and Petrovic, Nenad and Knoll, Alois},
+  title     = {Porimon: An {LLM}-Based {Pok{\'e}mon} Battle Agent Enhanced by Long/Short-Term Knowledge Augmented Generation},
+  booktitle = {Proc. International Conference on Foundation and Large Language Models (FLLM)},
+  year      = {2026},
+  eprint    = {2609.32544},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2609.32544}
+}
+
+@misc{mariglia2026foulplay,
+  author  = {Mariglia, Patrick},
+  title   = {{Foul Play}: A {Pok{\'e}mon Showdown} Battle {AI}},
+  year    = {2026},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/pmariglia/foul-play},
+  urldate = {2026-11-24},
+  note    = {Motor de b{\'u}squeda asociado: \url{https://github.com/pmariglia/poke-engine}}
+}
+
+@misc{jaxcalibur2026,
+  author  = {{Jaxcalibur}},
+  title   = {How {Jaxcalibur} Works},
+  year    = {2026},
+  howpublished = {Blog},
+  url     = {https://jaxcalibur.github.io/},
+  urldate = {2026-11-24},
+  note    = {Transformer de 8.5M par{\'a}metros entrenado con {PPO} por self-play en {Gen 9 Random Battles}}
+}
+
+@misc{pokeenv,
+  author  = {Sahovic, Haris},
+  title   = {poke-env: A {Python} Interface for {Pok{\'e}mon Showdown} Bots},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/hsahovic/poke-env},
+  urldate = {2026-11-24}
+}
+
+@misc{showdown,
+  author  = {{Smogon University}},
+  title   = {{Pok{\'e}mon Showdown}: {Pok{\'e}mon} Battle Simulator},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/smogon/pokemon-showdown},
+  urldate = {2026-11-24}
+}
+
+% ==================== Agentes LLM/VLM ====================
+
+@article{gemini25report,
+  author  = {{Gemini Team, Google}},
+  title   = {Gemini 2.5: Pushing the Frontier with Advanced Reasoning, Multimodality, Long Context, and Next Generation Agentic Capabilities},
+  journal = {arXiv preprint arXiv:2507.06261},
+  year    = {2025},
+  eprint  = {2507.06261},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2507.06261},
+  note    = {Secc.~4.1 y ap{\'e}ndice~8.2: Gemini Plays {Pok{\'e}mon}}
+}
+
+@article{karten2026continual,
+  author  = {Karten, Seth and Zhang, Joel and Upaa, Tersoo and Feng, Ruirong and Li, Wenzhe and Shi, Chengshuai and others},
+  title   = {{Continual Harness}: Online Adaptation for Self-Improving Foundation Agents},
+  journal = {arXiv preprint arXiv:2605.09998},
+  year    = {2026},
+  eprint  = {2605.09998},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2605.09998}
+}
+
+@article{pokeai2025,
+  author  = {Liu, Zihao and Sui, Xinhang and Song, Yueran and Wang, Siwen},
+  title   = {{Pok{\'e}AI}: A Goal-Generating, Battle-Optimizing Multi-agent System for {Pokemon Red}},
+  journal = {arXiv preprint arXiv:2506.23689},
+  year    = {2025},
+  eprint  = {2506.23689},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2506.23689}
+}
+
+@inproceedings{ash2026,
+  author    = {Schneider, Benjamin and Schneider, Xavier and Zhong, Victor and Sun, Sun},
+  title     = {{ASH}: Agents that Self-Hone in Long-Horizon Worlds},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2026},
+  eprint    = {2605.14211},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2605.14211}
+}
+
+@misc{hershey2025latentspace,
+  author  = {{Latent Space}},
+  title   = {How {Claude 3.7} Plays {Pok{\'e}mon}},
+  year    = {2025},
+  howpublished = {Podcast Latent Space},
+  month   = {mar.},
+  url     = {https://www.latent.space/p/how-claude-plays-pokemon-was-made},
+  urldate = {2026-11-24},
+  note    = {Entrevista a David Hershey (Anthropic)}
+}
+
+@misc{bradshaw2026yearlate,
+  author  = {Bradshaw, Julian},
+  title   = {A Year Late, {Claude} Finally Beats {Pok{\'e}mon}},
+  year    = {2026},
+  howpublished = {LessWrong},
+  month   = {may.},
+  url     = {https://www.lesswrong.com/posts/sehJYg5Yny9fvpbpt/a-year-late-claude-finally-beats-pokemon},
+  urldate = {2026-11-24}
+}
+
+@misc{bradshaw2025gemini,
+  author  = {Bradshaw, Julian},
+  title   = {Is {Gemini} now better than {Claude} at {Pok{\'e}mon}?},
+  year    = {2025},
+  howpublished = {LessWrong},
+  month   = {abr.},
+  url     = {https://www.lesswrong.com/posts/7mqp8uRnnPdbBzJZE/is-gemini-now-better-than-claude-at-pokemon},
+  urldate = {2026-11-24}
+}
+
+@misc{lw2025researchnotes,
+  author  = {{Anonymous}},
+  title   = {Research Notes: Running {Claude 3.7}, {Gemini 2.5 Pro}, and o3 on {Pok{\'e}mon Red}},
+  year    = {2025},
+  howpublished = {LessWrong},
+  month   = {abr.},
+  url     = {https://www.lesswrong.com/posts/8aPyKyRrMAQatFSnG/research-notes-running-claude-3-7-gemini-2-5-pro-and-o3-on},
+  urldate = {2026-11-24},
+  note    = {Publicado por J. Bradshaw; seg{\'u}n el propio post, lo escribi{\'o} un autor que pidi{\'o} permanecer an{\'o}nimo}
+}
+
+@misc{snider2026opus45,
+  author  = {Snider, Josh},
+  title   = {Claude Plays {Pokemon}: {Opus 4.5} Follow-up},
+  year    = {2026},
+  howpublished = {LessWrong},
+  month   = {ene.},
+  url     = {https://www.lesswrong.com/posts/gogZyeistdaDFuhbG/claude-plays-pokemon-opus-4-5-follow-up},
+  urldate = {2026-11-24}
+}
+
+@misc{zhang2025crystal,
+  author  = {Zhang, Joel},
+  title   = {How {Gemini 3 Pro} Beat {Pokemon Crystal} (and 2.5 {Pro} didn't)},
+  year    = {2025},
+  howpublished = {Joel's Developer Blog},
+  month   = {dic.},
+  url     = {https://blog.jcz.dev/gemini-3-pro-vs-25-pro-in-pokemon-crystal},
+  urldate = {2026-11-24}
+}
+
+@misc{hu2026fable5replica,
+  author  = {Hu, Qingze},
+  title   = {I Replicated the Vision-Only {Pok{\'e}mon} Run {Anthropic} Showcased on the {Fable 5} Launch Page --- Then {I} Read Its Thinking Chains},
+  year    = {2026},
+  howpublished = {DEV Community},
+  month   = {jul.},
+  url     = {https://dev.to/qingze_hu_c4c251c1b353ede/i-replicated-the-vision-only-pokemon-run-anthropic-showcased-on-the-fable-5-launch-page-then-i-35ah},
+  urldate = {2026-11-24}
+}
+
+@misc{cicero2025scaffold,
+  author  = {{cicero225}},
+  title   = {{LLM} {Pok{\'e}mon} Scaffold (llm\_pokemon\_scaffold)},
+  year    = {2025},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/cicero225/llm_pokemon_scaffold},
+  urldate = {2026-11-24},
+  note    = {Autor an{\'o}nimo; es el scaffold descrito en el post ``Research Notes'' de LessWrong y deriva del ClaudePlaysPokemonStarter de D. Hershey}
+}
+
+@misc{techcrunch2025gemini,
+  author  = {Ha, Anthony},
+  title   = {Google's {Gemini} has beaten {Pok{\'e}mon Blue} (with a little help)},
+  year    = {2025},
+  howpublished = {TechCrunch},
+  month   = {may.},
+  url     = {https://techcrunch.com/2025/05/03/googles-gemini-has-beaten-pokemon-blue-with-a-little-help},
+  urldate = {2026-11-24}
+}
+
+% ==================== Generalistas y metodos ====================
+
+@article{baker2022vpt,
+  author  = {Baker, Bowen and Akkaya, Ilge and Zhokhov, Peter and Huizinga, Joost and Tang, Jie and Ecoffet, Adrien and others},
+  title   = {Video {PreTraining} ({VPT}): Learning to Act by Watching Unlabeled Online Videos},
+  journal = {arXiv preprint arXiv:2206.11795},
+  year    = {2022},
+  eprint  = {2206.11795},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2206.11795}
+}
+
+@article{sima2024,
+  author  = {{SIMA Team}},
+  title   = {Scaling Instructable Agents Across Many Simulated Worlds},
+  journal = {arXiv preprint arXiv:2404.10179},
+  year    = {2024},
+  eprint  = {2404.10179},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2404.10179}
+}
+
+@article{sima2_2025,
+  author  = {{SIMA Team}},
+  title   = {{SIMA 2}: A Generalist Embodied Agent for Virtual Worlds},
+  journal = {arXiv preprint arXiv:2512.04797},
+  year    = {2025},
+  eprint  = {2512.04797},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2512.04797}
+}
+
+@article{bruce2024genie,
+  author  = {Bruce, Jake and Dennis, Michael and Edwards, Ashley and Parker-Holder, Jack and Shi, Yuge and Hughes, Edward and others},
+  title   = {Genie: Generative Interactive Environments},
+  journal = {arXiv preprint arXiv:2402.15391},
+  year    = {2024},
+  eprint  = {2402.15391},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2402.15391}
+}
+
+@inproceedings{schmidt2023lapo,
+  author    = {Schmidt, Dominik and Jiang, Minqi},
+  title     = {Learning to Act without Actions},
+  booktitle = {Proc. International Conference on Learning Representations (ICLR)},
+  year      = {2024},
+  eprint    = {2312.10812},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2312.10812}
+}
+
+@inproceedings{ye2024lapa,
+  author    = {Ye, Seonghyeon and Jang, Joel and Jeon, Byeongguk and Joo, Sejune and Yang, Jianwei and Peng, Baolin and others},
+  title     = {Latent Action Pretraining from Videos},
+  booktitle = {Proc. International Conference on Learning Representations (ICLR)},
+  year      = {2025},
+  eprint    = {2410.11758},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2410.11758}
+}
+
+@inproceedings{nitrogen2026,
+  author    = {Magne, Lo{\"\i}c and Awadalla, Anas and Wang, Guanzhi and Xu, Yinzhen and Belofsky, Joshua and Hu, Fengyuan and others},
+  title     = {{NitroGen}: An Open Foundation Model for Generalist Gaming Agents},
+  booktitle = {Proc. IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2026},
+  eprint    = {2601.02427},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2601.02427}
+}
+
+@article{gametars2025,
+  author  = {Wang, Zihao and Li, Xujing and Ye, Yining and Fang, Junjie and Wang, Haoming and Liu, Longxiang and others},
+  title   = {{Game-TARS}: Pretrained Foundation Models for Scalable Generalist Multimodal Game Agents},
+  journal = {arXiv preprint arXiv:2510.23691},
+  year    = {2025},
+  eprint  = {2510.23691},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2510.23691}
+}
+
+@article{lumine2025,
+  author  = {Tan, Weihao and Li, Xiangyang and Fang, Yunhao and Yao, Heyuan and Yan, Shi and Luo, Hao and others},
+  title   = {Lumine: An Open Recipe for Building Generalist Agents in {3D} Open Worlds},
+  journal = {arXiv preprint arXiv:2511.08892},
+  year    = {2025},
+  eprint  = {2511.08892},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2511.08892}
+}
+
+@article{hafner2023dreamerv3,
+  author  = {Hafner, Danijar and Pasukonis, Jurgis and Ba, Jimmy and Lillicrap, Timothy},
+  title   = {Mastering Diverse Domains through World Models},
+  journal = {arXiv preprint arXiv:2301.04104},
+  year    = {2023},
+  eprint  = {2301.04104},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2301.04104}
+}
+
+@inproceedings{micheli2022iris,
+  author    = {Micheli, Vincent and Alonso, Eloi and Fleuret, Fran{\c{c}}ois},
+  title     = {Transformers are Sample-Efficient World Models},
+  booktitle = {Proc. International Conference on Learning Representations (ICLR)},
+  year      = {2023},
+  eprint    = {2209.00588},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2209.00588}
+}
+
+@inproceedings{alonso2024diamond,
+  author    = {Alonso, Eloi and Jelley, Adam and Micheli, Vincent and Kanervisto, Anssi and Storkey, Amos and Pearce, Tim and others},
+  title     = {Diffusion for World Modeling: Visual Details Matter in {Atari}},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2024},
+  eprint    = {2405.12399},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2405.12399}
+}
+
+@inproceedings{wang2024drama,
+  author    = {Wang, Wenlong and Dusparic, Ivana and Shi, Yucheng and Zhang, Ke and Cahill, Vinny},
+  title     = {Drama: {Mamba}-Enabled Model-Based Reinforcement Learning Is Sample and Parameter Efficient},
+  booktitle = {Proc. International Conference on Learning Representations (ICLR)},
+  year      = {2025},
+  eprint    = {2410.08893},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2410.08893}
+}
+
+@article{assran2025vjepa2,
+  author  = {Assran, Mido and Bardes, Adrien and Fan, David and Garrido, Quentin and Howes, Russell and Komeili, Mojtaba and others},
+  title   = {{V-JEPA 2}: Self-Supervised Video Models Enable Understanding, Prediction and Planning},
+  journal = {arXiv preprint arXiv:2506.09985},
+  year    = {2025},
+  eprint  = {2506.09985},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2506.09985}
+}
+
+@article{chen2021dt,
+  author  = {Chen, Lili and Lu, Kevin and Rajeswaran, Aravind and Lee, Kimin and Grover, Aditya and Laskin, Michael and others},
+  title   = {{Decision Transformer}: Reinforcement Learning via Sequence Modeling},
+  journal = {arXiv preprint arXiv:2106.01345},
+  year    = {2021},
+  eprint  = {2106.01345},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2106.01345}
+}
+
+@article{schmied2024lram,
+  author  = {Schmied, Thomas and Adler, Thomas and Patil, Vihang and Beck, Maximilian and P{\"o}ppel, Korbinian and Brandstetter, Johannes and others},
+  title   = {A Large Recurrent Action Model: {xLSTM} Enables Fast Inference for Robotics Tasks},
+  journal = {arXiv preprint arXiv:2410.22391},
+  year    = {2024},
+  eprint  = {2410.22391},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2410.22391}
+}
+
+@article{burda2018rnd,
+  author  = {Burda, Yuri and Edwards, Harrison and Storkey, Amos and Klimov, Oleg},
+  title   = {Exploration by Random Network Distillation},
+  journal = {arXiv preprint arXiv:1810.12894},
+  year    = {2018},
+  eprint  = {1810.12894},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/1810.12894}
+}
+
+@inproceedings{zhang2021noveld,
+  author    = {Zhang, Tianjun and Xu, Huazhe and Wang, Xiaolong and Wu, Yi and Keutzer, Kurt and Gonzalez, Joseph and others},
+  title     = {{NovelD}: A Simple yet Effective Exploration Criterion},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {34},
+  pages     = {25217--25230},
+  year      = {2021},
+  url       = {https://proceedings.neurips.cc/paper/2021/hash/d428d070622e0f4363fceae11f4a3576-Abstract.html}
+}
+
+@article{henaff2022e3b,
+  author  = {Henaff, Mikael and Raileanu, Roberta and Jiang, Minqi and Rockt{\"a}schel, Tim},
+  title   = {Exploration via Elliptical Episodic Bonuses},
+  journal = {arXiv preprint arXiv:2210.05805},
+  year    = {2022},
+  eprint  = {2210.05805},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2210.05805}
+}
+
+@article{ecoffet2021goexplore,
+  author  = {Ecoffet, Adrien and Huizinga, Joost and Lehman, Joel and Stanley, Kenneth O. and Clune, Jeff},
+  title   = {First Return, Then Explore},
+  journal = {Nature},
+  volume  = {590},
+  pages   = {580--586},
+  year    = {2021},
+  doi     = {10.1038/s41586-020-03157-9},
+  eprint  = {2004.12919},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2004.12919}
+}
+
+@article{suarez2024pufferlib,
+  author  = {Suarez, Joseph},
+  title   = {{PufferLib}: Making Reinforcement Learning Libraries and Environments Play Nice},
+  journal = {arXiv preprint arXiv:2406.12905},
+  year    = {2024},
+  eprint  = {2406.12905},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2406.12905}
+}
+
+@article{g1_2025,
+  author  = {Chen, Liang and Gao, Hongcheng and Liu, Tianyu and Huang, Zhiqi and Sung, Flood and Zhou, Xinyu and others},
+  title   = {{G1}: Bootstrapping Perception and Reasoning Abilities of Vision-Language Model via Reinforcement Learning},
+  journal = {arXiv preprint arXiv:2505.13426},
+  year    = {2025},
+  eprint  = {2505.13426},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2505.13426}
+}
+
+@inproceedings{feng2025gigpo,
+  author    = {Feng, Lang and Xue, Zhenghai and Liu, Tingcong and An, Bo},
+  title     = {Group-in-Group Policy Optimization for {LLM} Agent Training},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2025},
+  eprint    = {2505.10978},
+  archivePrefix = {arXiv},
+  url       = {https://arxiv.org/abs/2505.10978}
+}
+
+@article{odysseus2026,
+  author  = {Shi, Chengshuai and Li, Wenzhe and Liang, Xinran and Lu, Yizhou and Yang, Wenjia and Feng, Ruirong and others},
+  title   = {Odysseus: Scaling {VLMs} to 100+ Turn Decision-Making in Games via Reinforcement Learning},
+  journal = {arXiv preprint arXiv:2605.00347},
+  year    = {2026},
+  eprint  = {2605.00347},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2605.00347}
+}
+
+@article{rlvlm2026perceive,
+  author  = {Zhang, Ziqian and Liao, Junjie and Zhang, Zhining and Zhu, Wentao},
+  title   = {{RL} Teaches {VLMs} Where to Attend but Not How to Perceive},
+  journal = {arXiv preprint arXiv:2610.23983},
+  year    = {2026},
+  eprint  = {2610.23983},
+  archivePrefix = {arXiv},
+  url     = {https://arxiv.org/abs/2610.23983}
+}
+
+% ==================== Infraestructura ====================
+
+@misc{pyboy,
+  author  = {Ynddal, Mads},
+  title   = {{PyBoy}: {Game Boy} Emulator Written in {Python}},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/Baekalfen/PyBoy},
+  urldate = {2026-11-24}
+}
+
+@misc{stableretro,
+  author  = {{Farama Foundation}},
+  title   = {{Stable-Retro}: A Fork of {Gym Retro} with Additional Games, Emulators and Supported Platforms},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/Farama-Foundation/stable-retro},
+  urldate = {2026-11-24}
+}
+
+@misc{mgba,
+  author  = {Pfau, Vicki and others},
+  title   = {{mGBA}: {Game Boy Advance} Emulator},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/mgba-emu/mgba},
+  urldate = {2026-11-24}
+}
+
+@misc{pydesmume,
+  author  = {{SkyTemple}},
+  title   = {py-desmume: {Python} Library and {GUI} for {DeSmuME}, the {Nintendo DS} Emulator},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/SkyTemple/py-desmume},
+  urldate = {2026-11-24}
+}
+
+@misc{melonds,
+  author  = {{melonDS team}},
+  title   = {{melonDS}: {DS} Emulator},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/melonDS-emu/melonDS},
+  urldate = {2026-11-24}
+}
+
+@misc{pret,
+  author  = {{pret}},
+  title   = {pret Decompilation Projects (pokered, pokecrystal, pokeemerald, pokefirered, pokeplatinum, pokeheartgold)},
+  howpublished = {Organizaci{\'o}n de GitHub},
+  url     = {https://github.com/pret},
+  urldate = {2026-11-24}
+}
+
+@misc{pygba,
+  author  = {von R{\"u}tte, Dimitri},
+  title   = {pygba: A {Python} Wrapper around the {Game Boy Advance} Emulator {mGBA} with {Gymnasium} Support},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/dvruette/pygba},
+  urldate = {2026-11-24}
+}
+
+@misc{pokeapi,
+  author  = {{PokeAPI}},
+  title   = {{PokeAPI}: The {Pok{\'e}mon} {API}},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/PokeAPI/pokeapi},
+  urldate = {2026-11-24}
+}
+
+% ==================== Material del curso ====================
+
+@misc{ipd434_2026,
+  author  = {{TEL-USM}},
+  title   = {{IPD434} {Soft Computing}: material del curso (rama 2026-2)},
+  year    = {2026},
+  howpublished = {Repositorio de GitHub},
+  url     = {https://github.com/TEL-USM/IPD434/tree/2026-2},
+  urldate = {2026-11-24}
+}
