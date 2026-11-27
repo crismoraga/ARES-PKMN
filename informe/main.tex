@@ -1,0 +1,159 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-noshorthands,es-tabla]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+
+% Resultados: todos los números salen de generated/numbers.tex (scripts/ares_u_report_assets.py).
+\InputIfFileExists{generated/numbers.tex}{}{}
+\newcommand{\val}[1]{\ifcsname #1\endcsname\csname #1\endcsname\else\textbf{\textcolor{red}{??}}\fi}
+\newcommand{\inputgen}[1]{\IfFileExists{generated/#1}{\input{generated/#1}}{\textbf{\textcolor{red}{[\detokenize{#1} pendiente]}}}}
+\newcommand{\figgen}[2]{\IfFileExists{figs/#1}{\includegraphics[width=#2]{figs/#1}}{\fbox{\parbox{#2}{\centering\textcolor{red}{[figura \detokenize{#1} pendiente]}}}}}
+
+% Datos del autor (requeridos por la pauta: nombre completo y rol USM).
+\newcommand{\autor}{Cristóbal Moraga}
+\newcommand{\rolusm}{\textcolor{red}{ROL-PENDIENTE}}
+
+\begin{document}
+
+\title{ARES-U: representaciones agnósticas al juego para agentes de Pokémon que transfieren entre generaciones}
+
+\author{\IEEEauthorblockN{\autor}
+\IEEEauthorblockA{Rol USM: \rolusm\\
+IPD434 Seminario de Soft Computing, Universidad Técnica Federico Santa María\\
+Código: \url{https://github.com/crismoraga/ARES-PKMN} (rama \texttt{ipd434})}}
+
+\maketitle
+
+\begin{abstract}
+Los agentes que juegan Pokémon (RL con PPO sobre \emph{Pokémon Red}, LLM con \emph{harness} como Claude o Gemini, y bots de combate en Showdown) comparten vicios documentados. Dependen de recompensas y RAM específicas de un juego, de segmentos con scripts y de corridas de una sola semilla, y ninguno evalúa si lo aprendido transfiere a otra generación. Este trabajo estudia la pieza que habilita un agente para \emph{cualquier} Pokémon: representaciones independientes del juego. En el experimento central (E1), un Transformer de entidades \emph{sin identificadores de especie ni de movimiento}, entrenado por \emph{self-play} con PPO usando solo especies de Gen~1, se evalúa sin reentrenar sobre especies nunca vistas de Gen~2 y Gen~3. Se compara con heurísticas expertas, DQN (línea base del curso), imitación y una ablación con identificadores, usando \val{EoneSeeds} semillas y tests pareados a nivel de combate. En el experimento secundario (E2), un agente que solo ve píxeles, con autoencoder, PPO y novedad intrínseca, transfiere su exploración de FireRed a Emerald. Se reportan las brechas de generalización, la variabilidad entre semillas y las limitaciones.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Aprendizaje por refuerzo, Transformers, transferencia, autoencoders, Pokémon, generalización.
+\end{IEEEkeywords}
+
+\section{Introducción}
+Terminar un juego de Pokémon exige navegar mapas, leer menús, administrar recursos y ganar cientos de combates por turnos con información parcial. Entre 2023 y 2026 lo han intentado tres familias de agentes. Los agentes de RL sobre \emph{Pokémon Red} con PyBoy y PPO llegan a Cerulean \cite{pleines2025pokemonred} o, según sus autores, terminan el juego \cite{rubinstein2025pokerl}. Los LLM con \emph{harness} terminaron \emph{Blue} y \emph{Crystal} tras cientos de horas \cite{gemini25report,zhang2025crystal}. Los bots de combate rinden a nivel humano en Showdown \cite{grigsby2025metamon,karten2025pokechamp}. La revisión de esa literatura, junto con la auditoría del sistema previo del autor (ARES-PKMN), identifica vicios recurrentes:
+(i)~\emph{harness} y estado privilegiado de RAM que hacen gran parte del trabajo;
+(ii)~recompensas y scripts específicos de un ROM (dinero infinito, HMs automáticos \cite{rubinstein2025pokerl});
+(iii)~\emph{reward hacking} \cite{pleines2025pokemonred};
+(iv)~corridas de una sola semilla con métricas incomparables \cite{karten2026pokeagent};
+(v)~\textbf{cero evaluación de transferencia}: ningún trabajo entrena en un juego y evalúa en otro.
+El propio ARES-PKMN lee RAM de dos ROM de Gen~3, decide con 101 hitos escritos a mano, y sus redes tienen un peso de $0.05$ en la decisión de combate.
+
+Este proyecto ataca el vicio (v), base de la visión de un agente para \emph{cualquier} Pokémon, y lo hace con un protocolo que evita (i)--(iv). Las contribuciones son:
+\begin{enumerate}
+\item Un catálogo de 17 vicios del estado del arte y 6 propios, con evidencia y una respuesta verificable para cada uno (repositorio, \texttt{docs/investigacion}).
+\item \textbf{E1}: un Transformer de entidades sin identificadores, entrenado con especies de Gen~1, cuya transferencia \emph{zero-shot} a Gen~2/3 se mide frente a una ablación con identificadores, DQN e imitación, con hipótesis pre-registradas.
+\item \textbf{E2}: exploración a partir de píxeles con encoder auto-supervisado, transferida de FireRed a Emerald sin RAM en la observación.
+\item Entrenamiento en una GPU AMD RX~6700~XT mediante DirectML. Se documenta la falla de autograd que antes obligaba a usar CPU; resolverla da una aceleración de ${\sim}6\times$.
+\end{enumerate}
+
+\section{Trabajos relacionados}
+\textbf{RL de extremo a extremo.} Whidden popularizó PPO con recompensa por exploración sobre \emph{Red} \cite{whidden2023pokemonred}. Pleines et al.\ \cite{pleines2025pokemonred} llegan a vencer a Brock en el 99\% de los casos, pero completan Cerulean en el 0\% y documentan \emph{reward hacking} (399 curaciones contra 23 de un humano). PokeRL afirma terminar \emph{Red} con 25+ términos de recompensa por evento, \emph{swarming} de savestates y scripts \cite{rubinstein2025pokerl}.
+\textbf{LLM.} Gemini y Claude terminan juegos con minimapas, \emph{pathfinders} y RAM convertida a texto \cite{gemini25report,bradshaw2026yearlate}. El PokéAgent Challenge \cite{karten2026pokeagent} formaliza la confusión entre \emph{harness} y modelo; su ganador destila subobjetivos de un LLM a una red refinada con RL.
+\textbf{Combate.} Metamon entrena Transformers con RL offline sobre réplicas humanas \cite{grigsby2025metamon}; PokéChamp y PokéLLMon usan LLM \cite{karten2025pokechamp,hu2024pokellmon}. Todos evalúan una generación o formato fijo.
+\textbf{Generalistas.} VPT, SIMA y NitroGen transfieren entre juegos con interfaces de acción unificadas y datos masivos \cite{baker2022vpt,sima2024,nitrogen2026}. La exploración intrínseca \cite{burda2018rnd} y los encoders auto-supervisados \cite{campese2026jepa} son las piezas que este trabajo adopta a escala de una GPU.
+
+\section{Método}
+\subsection{E1: combate como MDP y tokenización agnóstica}
+Cada combate 3 vs 3 a nivel 50 se modela como un MDP parcialmente observable sobre el motor Gen~3 determinista de ARES. Ese motor calcula el daño con aritmética entera verificada y cubre 124 efectos. La observación de un lado es un conjunto de tokens: un token de campo (clima, turno, barreras, márgenes de PS), seis tokens de entidad (tipos en \emph{one-hot}, estadísticas base, PS, estado y \emph{boosts}) y seis tokens de acción. Los tokens de movimiento llevan tipo, potencia, precisión, categoría, PP, efectividad contra el rival, STAB y daño estimado; los de cambio llevan amenaza, velocidad y efectividad. El punto clave es que \textbf{ningún token contiene el identificador de la especie ni del movimiento}: el agente solo ve \emph{qué es} un Pokémon, nunca \emph{quién es}. La información oculta del rival (miembros no revelados y sus PS máximos) no aparece en la observación, y las acciones ilegales se enmascaran.
+
+\subsection{Transformer actor-crítico}
+Los $1+6+6$ tokens se proyectan a $d=128$ y pasan por $L=3$ bloques \emph{pre-norm} con atención multi-cabeza (4 cabezas), $\mathrm{Attn}(Q,K,V)=\mathrm{softmax}(QK^\top/\sqrt{d_k})V$ \cite{vaswani2017attention}. Los logits de la política son una atención de puntero del token de campo sobre los tokens de acción, con $-\infty$ en las acciones ilegales, y el crítico lee el token de campo (464k parámetros). Los bloques se escribieron a mano porque \texttt{nn.TransformerEncoderLayer(norm\_first=True)} falla en DirectML.
+
+\subsection{Entrenamiento}
+\textbf{PPO por self-play} \cite{schulman2017ppo}: recorte $\epsilon=0.2$, GAE ($\gamma=0.99,\lambda=0.95$) \cite{schulman2016gae}, LR $2.5\cdot10^{-4}$ con decaimiento lineal, KL objetivo $0.02$ y entropía con decaimiento lineal. Los rivales salen de una liga: 35\% la política actual, 25\% instantáneas pasadas, 30\% Greedy y 10\% aleatorio. La recompensa es $\pm1$ terminal más un \emph{shaping} por potencial $\Phi=$ PS propio $-$ PS rival con $c=0.2$, que preserva la política óptima \cite{ng1999shaping}. \textbf{BC$\to$PPO}: primero imita 300k decisiones del prior experto de ARES y de Greedy (con entropía cruzada enmascarada), descontadas del mismo presupuesto, y después ajusta con PPO. \textbf{DQN-MLP} \cite{mnih2015dqn} es la línea base del curso, con \emph{replay}, red objetivo y las mismas 580 features aplanadas. \textbf{PPO+IDs} es la ablación: suma un \emph{embedding} de especie aprendido, y las especies no vistas usan una fila compartida.
+
+\subsection{E2: exploración desde píxeles}
+El entorno es mGBA en modo crudo, sin orquestador ni scripts. La acción es uno de 8 botones o NOOP, mantenida 24 cuadros. La observación es una pila de 4 cuadros en gris de $84\times84$. La RAM se lee \emph{solo} para medir celdas $(\text{mapa},x,y)$. Un autoencoder convolucional se preentrena con cuadros de FireRed \cite{hinton2006ae}. El agente PPO tiene dos cabezas de valor: una para la novedad RND \cite{burda2018rnd} y otra para una novedad episódica por conteo de \emph{hashes} de píxeles. En \emph{Transferencia}, el encoder y la política de FireRed se ajustan en Emerald con el mismo presupuesto que el agente \emph{Desde cero}. En \emph{Zero-shot}, la política de FireRed se aplica en Emerald sin ajustar.
+
+\section{Protocolo experimental}
+\textbf{Splits de E1.} El entrenamiento usa solo especies de Gen~1 (147). La evaluación usa \emph{Gen1}, que son equipos nuevos de la misma distribución; \emph{Gen1-H}, 4096 conjuntos de especies que el entrenamiento nunca muestrea; y \emph{Gen2$^\ast$} (98 especies) y \emph{Gen3$^\ast$} (132), nunca vistas. Se verificó que no hay fugas entre splits. Los movimientos y la mecánica Gen~3 se comparten entre splits, por lo que el cambio de dominio es de especies.
+\textbf{Presupuesto y semillas.} Cada método RL corre $6\cdot10^6$ decisiones por semilla, con \val{EoneSeeds} semillas y sin elegir checkpoints (se usa el final). Las curvas de entrenamiento usan combates de validación disjuntos del test.
+\textbf{Evaluación.} Hay \val{EoneBattles} combates por split y oponente, divididos en pares de equipos con asientos intercambiados, frente a Greedy (máximo daño), el prior experto de ARES y una política aleatoria. El puntaje es victorias más la mitad de los empates.
+\textbf{Estadística.} La unidad es el par de equipos promediado entre semillas. Se usan tests de permutación por cambio de signo, pareados porque todos los métodos juegan los mismos combates, con IC 95\% \emph{bootstrap}. La variabilidad entre semillas se reporta con IC $t$. Antes de las corridas finales se fijó una familia de hipótesis, contra Greedy en Gen2$^\ast$/Gen3$^\ast$, corregida por Holm. H1: PPO $>$ 0.5. H2: PPO $>$ PPO+IDs. H3: PPO $>$ DQN. H4: efecto de BC$\to$PPO frente a PPO.
+\textbf{E2.} Se usan \val{EtwoSeeds} semillas con el mismo presupuesto de pasos y se miden las celdas únicas por episodio de evaluación y la cobertura acumulada.
+\textbf{Hardware.} Ryzen~7 5700X3D, 24\,GB y RX~6700~XT (DirectML). Los \emph{rollouts} corren en 10 procesos de CPU.
+
+\section{Resultados}
+\begin{table}[t]
+\caption{E1: puntaje (IC 95\% de pares) por split. $^\ast$: especies nunca vistas. Media de \val{EoneSeeds} semillas.}
+\label{tab:e1}
+\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\inputgen{tab_e1.tex}
+\end{table}
+
+\begin{table}[t]
+\caption{Hipótesis pre-registradas (contra Greedy, permutación pareada, Holm).}
+\label{tab:hyp}
+\centering\scriptsize\setlength{\tabcolsep}{3pt}
+\inputgen{tab_hyp.tex}
+\end{table}
+
+\textbf{E1.} La Tabla~\ref{tab:e1} resume el puntaje final. Contra Greedy, el PPO-Transformer obtiene \val{EonePpoGreedyGenOneTrain} en Gen1, \val{EonePpoGreedyGenTwo} en Gen2$^\ast$ y \val{EonePpoGreedyGenThree} en Gen3$^\ast$. La brecha de generalización Gen1$-$Gen3 es \val{EoneGapPpoGreedyGenThree} (IC [\val{EoneGapPpoGreedyGenThreeLo}, \val{EoneGapPpoGreedyGenThreeHi}]). Con identificadores, la brecha es \val{EoneGapPpoIdsGreedyGenThree}. La Tabla~\ref{tab:hyp} contiene los tests confirmatorios y la Fig.~\ref{fig:e1} las curvas de aprendizaje.
+
+\begin{figure}[t]
+\centering
+\figgen{e1_learning_curves.png}{\columnwidth}
+\caption{E1: puntaje de validación durante el entrenamiento (banda: semillas).}
+\label{fig:e1}
+\end{figure}
+
+\textbf{E2.} En Emerald, la política aleatoria visita \val{EtwoRandomCells} celdas por episodio. El agente desde cero visita \val{EtwoScratchCells}, el de transferencia \val{EtwoTransferCells} y el zero-shot \val{EtwoZeroShotCells} (Tabla~\ref{tab:e2}, Fig.~\ref{fig:e2}).
+
+\begin{table}[t]
+\caption{E2: celdas únicas por episodio de evaluación en Emerald (media $\pm$ d.e.\ entre semillas).}
+\label{tab:e2}
+\centering\scriptsize
+\inputgen{tab_e2.tex}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\figgen{e2_train_global_cells.png}{\columnwidth}
+\caption{E2: cobertura acumulada en Emerald durante el entrenamiento.}
+\label{fig:e2}
+\end{figure}
+
+\section{Análisis y discusión}
+\textbf{Techo del problema.} El 99\% de los combates Greedy contra Greedy con asientos intercambiados los decide el equipo y no la política. Una búsqueda \emph{lookahead} de 8 simulaciones, con acceso al simulador que el agente no tiene, alcanza $0.62$ contra Greedy. Por eso las ventajas posibles sobre Greedy son de pocos puntos, y los IC pareados son la forma correcta de detectarlas.
+\textbf{Qué muestra la brecha.} Si una política memoriza especies, debería perder rendimiento en Gen2/3. La comparación con la ablación con identificadores mide justamente cuánto cuesta depender de la identidad.
+\textbf{Vicios abordados.} La Tabla~\ref{tab:vices} resume cómo responde el diseño a los vicios más graves de la literatura y del sistema previo.
+
+\begin{table}[t]
+\caption{Vicios del estado del arte y respuesta verificable de ARES-U (catálogo completo en el repositorio).}
+\label{tab:vices}
+\centering\scriptsize\setlength{\tabcolsep}{2pt}
+\begin{tabular}{p{0.30\columnwidth}p{0.36\columnwidth}p{0.30\columnwidth}}
+\toprule
+Vicio (ejemplo) & Respuesta & Verificación \\
+\midrule
+Cero transferencia (todo en \emph{Red} o un ROM) & Tokens sin IDs; split por generación & Brecha Gen1$\to$Gen3 (E1); FR$\to$EM (E2) \\
+Memorizar IDs (one-hot de especie) & Entidades descritas por atributos & Ablación PPO+IDs (H2) \\
+\emph{Harness}/RAM privilegiada \cite{gemini25report} & Sin orquestador; E2 solo píxeles & RAM solo en la métrica \\
+Scripts, dinero infinito \cite{rubinstein2025pokerl} & Cero ayudas de juego & Configuración publicada \\
+\emph{Reward hacking} \cite{pleines2025pokemonred} & $\pm1$ + \emph{shaping} por potencial; RND & Política óptima invariante \cite{ng1999shaping} \\
+\emph{Panic switching} \cite{hu2024pokellmon} & Self-play con liga & Tasa de cambios consecutivos \\
+N=1, métricas incomparables & \val{EoneSeeds} semillas, presupuesto fijo, tests pareados & Tablas~\ref{tab:e1}--\ref{tab:hyp} \\
+Redes decorativas (ARES: peso $0.05$) & La red decide sola & Contra las heurísticas de ARES \\
+\bottomrule
+\end{tabular}
+\end{table}
+\textbf{Limitaciones.} E1 cambia las especies, pero conserva los movimientos y la mecánica de Gen~3. Usa combates 3v3 en un simulador y no contra la IA de los NPC del cartucho. E2 mide cobertura y no avance de la historia, con pocas semillas y un presupuesto de pasos modesto. Los hiperparámetros se ajustaron en pilotos que usaron combates de evaluación, aunque ningún checkpoint final se seleccionó sobre el test. Ningún resultado de este trabajo equivale a terminar un juego.
+
+\section{Conclusiones y trabajo futuro}
+Una representación por entidades sin identificadores permite que una política de combate entrenada con una generación se aplique a otras sin reentrenar, y el protocolo pareado mide con precisión su costo de transferencia. La exploración desde píxeles también transfiere entre ROM de la misma generación. Ambas piezas son pasos verificables hacia ARES-U, un agente para cualquier Pokémon. Sus componentes siguientes son: una capa de abstracción con PyBoy, mGBA y melonDS; un encoder compartido entre generaciones; una política jerárquica con memoria (xLSTM/SSM); un archivo Go-Explore; un LLM solo como profesor \emph{offline}; y evaluación \emph{leave-one-game-out}.
+
+\bibliographystyle{IEEEtran}
+\bibliography{../docs/investigacion/referencias,extra}
+
+\end{document}

@@ -12,3 +12,13 @@ artifacts/
 *.gba
 *.sav
 *.ss*
+informe/*.aux
+informe/*.log
+informe/*.out
+informe/*.bbl
+informe/*.blg
+informe/*.nav
+informe/*.snm
+informe/*.toc
+informe/*.fls
+informe/*.fdb_latexmk

@@ -1,0 +1,184 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-noshorthands]{babel}
+\usepackage{booktabs,graphicx,amsmath,xcolor,tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\usetheme{default}
+\usecolortheme{seahorse}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\definecolor{ares}{HTML}{B3261E}
+\setbeamercolor{frametitle}{fg=ares}
+\setbeamercolor{title}{fg=ares}
+\setbeamercolor{structure}{fg=ares}
+
+\InputIfFileExists{generated/numbers.tex}{}{}
+\newcommand{\val}[1]{\ifcsname #1\endcsname\csname #1\endcsname\else\textbf{\textcolor{red}{??}}\fi}
+\newcommand{\inputgen}[1]{\IfFileExists{generated/#1}{\input{generated/#1}}{\textbf{\textcolor{red}{[\detokenize{#1} pendiente]}}}}
+\newcommand{\figgen}[2]{\IfFileExists{figs/#1}{\includegraphics[width=#2]{figs/#1}}{\fbox{\parbox{#2}{\centering\textcolor{red}{[figura \detokenize{#1} pendiente]}}}}}
+
+\title{ARES-U}
+\subtitle{Representaciones agnósticas al juego para agentes de Pokémon que transfieren entre generaciones}
+\author{Cristóbal Moraga}
+\institute{IPD434 Seminario de Soft Computing --- UTFSM}
+\date{Diciembre 2026}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\centering\small Código: \url{github.com/crismoraga/ARES-PKMN} (rama \texttt{ipd434})
+\end{frame}
+
+\begin{frame}{Problema: un agente para \emph{cualquier} Pokémon}
+\begin{columns}[T]
+\column{0.55\textwidth}
+\begin{itemize}
+\item Navegación, menús, recursos, cientos de combates por turnos con información parcial.
+\item Tres familias de agentes (2023--2026):
+\begin{itemize}
+\item \textbf{RL + PyBoy} sobre \emph{Red}: llega a Cerulean (0\% la completa).
+\item \textbf{LLM + harness}: Gemini terminó \emph{Blue} en 813\,h; Claude tardó un año.
+\item \textbf{Bots de combate}: nivel humano en Showdown, una sola generación.
+\end{itemize}
+\item \textbf{Nadie entrena en un juego y evalúa en otro.}
+\end{itemize}
+\column{0.42\textwidth}
+\begin{block}{Pregunta}
+¿Puede una red aprender patrones de Pokémon que \textbf{transfieran} a contenido de otras generaciones que \textbf{nunca vio}?
+\end{block}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Vicios del estado del arte (17 + 6 propios catalogados)}
+\small
+\begin{tabular}{p{0.33\textwidth}p{0.6\textwidth}}
+\toprule
+Vicio & Evidencia \\
+\midrule
+Harness / RAM privilegiada & minimapas, \emph{pathfinders}, RAM a texto (Gemini, Claude) \\
+Scripts y trampas & dinero infinito, HMs automáticos (PokeRL ``beat Red'') \\
+Recompensa a mano por ROM & 25+ términos de evento; \emph{reward hacking}: 399 curas vs 23 humano \\
+Cero generalización & todo en un ROM; modelos cosidos por tramo \\
+N=1 y métricas incomparables & horas vs pasos vs turnos; sin semillas \\
+Memorizar IDs & one-hot de especie: no transfiere \\
+\midrule
+\textbf{ARES-PKMN (antes)} & solo RAM Gen 3, 101 hitos a mano, red de combate con peso $0.05$, 1--3 medallas \\
+\bottomrule
+\end{tabular}
+\end{frame}
+
+\begin{frame}{Idea: describir \emph{qué es} un Pokémon, nunca \emph{quién es}}
+\centering
+\begin{tikzpicture}[node distance=0.35cm, box/.style={draw, rounded corners, minimum height=0.8cm, align=center, font=\small}]
+\node[box, fill=gray!15] (f) {Campo\\clima, turno, PS};
+\node[box, fill=blue!10, right=of f] (e) {6 entidades\\tipos, stats base,\\PS, estado};
+\node[box, fill=green!10, right=of e] (a) {6 acciones\\tipo, potencia, eficacia,\\daño estimado};
+\node[box, fill=ares!15, below=1.0cm of e, minimum width=8cm] (t) {Transformer pre-norm: 3 capas, 4 cabezas, $d=128$ (464k parámetros)};
+\node[box, below left=0.8cm and -1.5cm of t] (p) {$\pi$: atención de puntero\\sobre acciones legales};
+\node[box, below right=0.8cm and -1.5cm of t] (v) {$V$: crítico};
+\draw[-{Latex}] (f) -- (t); \draw[-{Latex}] (e) -- (t); \draw[-{Latex}] (a) -- (t);
+\draw[-{Latex}] (t) -- (p); \draw[-{Latex}] (t) -- (v);
+\end{tikzpicture}
+
+\vspace{0.3cm}
+\small \textbf{Sin IDs de especie ni de movimiento}. Información oculta del rival ausente. Máscara de acciones ilegales.
+\end{frame}
+
+\begin{frame}{Entrenamiento y líneas base (unidades del curso)}
+\begin{itemize}
+\item \textbf{PPO por self-play} con liga (yo, instantáneas, Greedy, aleatorio). GAE, LR y entropía con \emph{annealing}, KL objetivo. \hfill \emph{05-1 RL}
+\item Recompensa $\pm1$ + \emph{shaping} por potencial (no altera la política óptima).
+\item \textbf{BC$\to$PPO}: imitación del prior experto y Greedy, luego PPO. \hfill \emph{05-2 transferencia}
+\item \textbf{DQN-MLP}: algoritmo canónico del curso, mismo presupuesto. \hfill \emph{05-1}
+\item \textbf{Ablación PPO+IDs}: mismo modelo + \emph{embedding} de especie.
+\item Heurísticas: Greedy (máximo daño), \textbf{prior experto de ARES}, aleatorio.
+\item GPU AMD RX 6700 XT vía DirectML: ${\sim}6\times$ la CPU, tras resolver un fallo de autograd.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Protocolo experimental}
+\begin{columns}[T]
+\column{0.5\textwidth}
+\textbf{Splits (motor Gen 3 exacto)}
+\begin{itemize}\small
+\item Entrena: solo especies \textbf{Gen 1} (147).
+\item Evalúa: Gen1, Gen1-H (conjuntos retenidos), \textbf{Gen2$^\ast$ (98)}, \textbf{Gen3$^\ast$ (132)} nunca vistas.
+\item Sin fugas (verificado por revisión adversarial).
+\end{itemize}
+\column{0.48\textwidth}
+\textbf{Estadística}
+\begin{itemize}\small
+\item \val{EoneSeeds} semillas $\times$ 5 métodos, $6\cdot10^6$ pasos cada uno, checkpoint final.
+\item \val{EoneBattles} combates por split y oponente, en pares con asientos intercambiados.
+\item Test \textbf{pareado} por permutación; IC bootstrap; IC $t$ entre semillas.
+\item Hipótesis \textbf{pre-registradas} H1--H4, Holm.
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Resultados E1: puntaje por split}
+\centering\scriptsize
+\inputgen{tab_e1.tex}
+
+\vspace{0.2cm}\small
+Brecha Gen1$-$Gen3 (PPO vs Greedy): \textbf{\val{EoneGapPpoGreedyGenThree}} [\val{EoneGapPpoGreedyGenThreeLo}, \val{EoneGapPpoGreedyGenThreeHi}]
+\end{frame}
+
+\begin{frame}{Hipótesis pre-registradas}
+\centering\scriptsize
+\inputgen{tab_hyp.tex}
+
+\vspace{0.3cm}
+\figgen{e1_learning_curves.png}{0.75\textwidth}
+\end{frame}
+
+\begin{frame}{¿Cuánto margen hay? Análisis del techo}
+\begin{itemize}
+\item Greedy vs Greedy con asientos intercambiados: el \textbf{99\%} de los pares lo decide el \emph{equipo}, no la política.
+\item Búsqueda \emph{lookahead} con acceso al simulador (que el agente no tiene): \textbf{0.62} contra Greedy.
+\item $\Rightarrow$ las ventajas reales son de pocos puntos: para detectarlas hacen falta tests \textbf{pareados} y muchos combates.
+\item PPO-Transformer vs Greedy en Gen3$^\ast$: \textbf{\val{EonePpoGreedyGenThree}} [\val{EonePpoGreedyGenThreeLo}, \val{EonePpoGreedyGenThreeHi}].
+\end{itemize}
+\end{frame}
+
+\begin{frame}{E2: exploración desde píxeles, FireRed $\to$ Emerald}
+\begin{columns}[T]
+\column{0.45\textwidth}
+\small
+\begin{itemize}
+\item mGBA crudo, 8 botones + NOOP, pila de 4 cuadros $84\times84$.
+\item RAM \textbf{solo} para medir celdas (mapa, $x$, $y$).
+\item AE convolucional preentrenado en FireRed. \hfill\emph{05-3}
+\item PPO + RND + novedad episódica.
+\item Zero-shot y transferencia vs desde cero.
+\end{itemize}
+\scriptsize\inputgen{tab_e2.tex}
+\column{0.53\textwidth}
+\figgen{e2_train_global_cells.png}{\textwidth}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Análisis crítico y limitaciones}
+\begin{itemize}
+\item E1 cambia las \textbf{especies}; los movimientos y la mecánica de Gen 3 se comparten.
+\item Combates 3v3 en simulador; no contra la IA de los NPC del cartucho.
+\item E2 mide \textbf{cobertura}, no avance de la historia; pocas semillas.
+\item Los pilotos para fijar hiperparámetros usaron combates de evaluación. Ningún checkpoint se eligió sobre el test.
+\item \textbf{Nada de esto equivale a terminar un juego}, y no se afirma.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Conclusiones y trabajo futuro: hacia ARES-U}
+\begin{itemize}
+\item Sin identificadores, la política de combate transfiere a especies de otras generaciones; la ablación con IDs mide cuánto cuesta memorizar.
+\item La exploración aprendida desde píxeles transfiere entre ROM.
+\item \textbf{Hoja de ruta}: capa de abstracción (PyBoy, mGBA, melonDS), encoder compartido entre generaciones, política jerárquica con memoria (xLSTM/SSM), archivo Go-Explore (EA), LLM solo como profesor \emph{offline}, evaluación \emph{leave-one-game-out}.
+\end{itemize}
+\vspace{0.2cm}
+\centering\large ¿Preguntas?
+\end{frame}
+
+\end{document}
