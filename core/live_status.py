@@ -65,7 +65,8 @@ def frame_to_rgb(frame: NDArray[Any]) -> NDArray[np.uint8]:
         return np.ascontiguousarray(array[..., :3].astype(np.uint8))
     if array.ndim == 2 and array.dtype in (np.uint32, np.int32, np.int64, np.uint64):
         packed = array.astype(np.uint32)
-        return np.stack([(packed & 0xFF), (packed >> 8) & 0xFF, (packed >> 16) & 0xFF], axis=-1).astype(np.uint8)
+        return np.asarray(np.stack([(packed & 0xFF), (packed >> 8) & 0xFF, (packed >> 16) & 0xFF], axis=-1),
+                          dtype=np.uint8)
     if array.ndim == 2:
         grey = array.astype(np.uint8)
         return np.asarray(np.stack([grey, grey, grey], axis=-1), dtype=np.uint8)
