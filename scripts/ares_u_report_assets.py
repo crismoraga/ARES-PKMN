@@ -16,6 +16,8 @@ import json
 import re
 import shutil
 from pathlib import Path
+
+import numpy as np
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,7 +81,7 @@ def e1_assets(run: Path, out: Path, figs: Path, macros: Macros) -> None:
         macros.add(base + "P", fmt_p(test["p_holm"]))
 
     rows = []
-    for opponent, label in (("greedy", "contra Greedy"), ("prior", "contra prior ARES")):
+    for opponent, label in (("greedy", "contra Greedy"),):
         rows.append(f"\\multicolumn{{{len(splits) + 1}}}{{l}}{{\\textit{{Puntaje {label}}}}}\\\\")
         for method in paired["methods"]:
             cells = []
@@ -315,6 +317,87 @@ def e3_assets(run: Path, out: Path, figs: Path, macros: Macros) -> None:
         shutil.copy2(run / "montage.png", figs / "e3_montage.png")
 
 
+E4_TITLES = {"rojo": "Rojo\nG1", "cristal": "Cristal\nG2", "emerald": "Esmeralda\nG3", "platino": "Platino\nG4",
+             "negro": "Negro\nG5", "heartgold": "HeartGold\nG4*", "negro2": "Negro 2\nG5*"}
+E4_COLORS = {"finetune": "#B3261E", "encoder": "#1A73E8"}
+E4_LABELS = {"finetune": "Currículo: hereda la política", "encoder": "Ablación: hereda solo el encoder"}
+
+
+def e4_assets(summary: dict[str, Any], figs: Path, macros: Macros) -> None:
+    """Curriculum figure (evolution across generations + retention heatmap) and macros."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    chain: list[str] = summary["chain"]
+    held: list[str] = summary["held_out"]
+    transfers: dict[str, Any] = summary.get("transfer", {})
+    if not transfers:
+        return
+    plt.rcParams.update({"font.size": 7, "axes.linewidth": 0.6})
+    figure, (left, right) = plt.subplots(1, 2, figsize=(7.1, 2.4), gridspec_kw={"width_ratios": [1.15, 1]})
+    xs = np.arange(len(chain))
+    for transfer, entry in transfers.items():
+        normalised = entry.get("normalised", {})
+        trained = [normalised.get(str(stage), {}).get(game, np.nan) for stage, game in enumerate(chain)]
+        jump = [np.nan] + [normalised.get(str(stage - 1), {}).get(game, np.nan) for stage, game in
+                           enumerate(chain) if stage > 0]
+        color = E4_COLORS.get(transfer, "#111827")
+        left.plot(xs, trained, "-o", color=color, ms=3, lw=1.2, label=f"{E4_LABELS.get(transfer, transfer)} (tras entrenar)")
+        left.plot(xs, jump, "--^", color=color, ms=3, lw=0.9, alpha=0.8, label="  al llegar (zero-shot)")
+        for stage, game in enumerate(chain):
+            value = normalised.get(str(stage), {}).get(game)
+            if value is not None:
+                macros.add(macro_name("Efour", transfer, game, "norm"), f"{value:.2f}")
+            if stage > 0:
+                before = normalised.get(str(stage - 1), {}).get(game)
+                if before is not None:
+                    macros.add(macro_name("Efour", transfer, game, "jump"), f"{before:.2f}")
+        last = str(len(chain) - 1)
+        for game in held:
+            value = normalised.get(last, {}).get(game)
+            if value is not None:
+                macros.add(macro_name("Efour", transfer, game, "heldout"), f"{value:.2f}")
+    left.axhline(1.0, color="#5F6368", ls=":", lw=0.8)
+    left.axhline(0.0, color="#9AA0A6", ls=":", lw=0.6)
+    left.text(len(chain) - 1, 1.03, "práctica actual: cada juego desde cero", ha="right", fontsize=6, color="#5F6368")
+    left.text(len(chain) - 1, 0.03, "azar", ha="right", fontsize=6, color="#9AA0A6")
+    left.set_xticks(xs, [E4_TITLES[g] for g in chain])
+    left.set_ylabel("Puntaje normalizado")
+    left.legend(fontsize=5.2, frameon=False, loc="lower left")
+    left.spines[["top", "right"]].set_visible(False)
+    best = "finetune" if "finetune" in transfers else next(iter(transfers))
+    normalised = transfers[best].get("normalised", {})
+    games = chain + held
+    grid = np.full((len(chain), len(games)), np.nan)
+    for stage in range(len(chain)):
+        for column, game in enumerate(games):
+            value = normalised.get(str(stage), {}).get(game)
+            if value is not None:
+                grid[stage, column] = value
+    image = right.imshow(grid, cmap="RdYlGn", vmin=0, vmax=1.5, aspect="auto")
+    for stage in range(len(chain)):
+        for column in range(len(games)):
+            if not np.isnan(grid[stage, column]):
+                right.text(column, stage, f"{grid[stage, column]:.2f}", ha="center", va="center", fontsize=5.5)
+    right.set_xticks(range(len(games)), [E4_TITLES[g] for g in games], fontsize=5.5)
+    right.set_yticks(range(len(chain)), [f"tras {E4_TITLES[g].split(chr(10))[0]}" for g in chain], fontsize=6)
+    right.set_title(f"Retención y transferencia ({E4_LABELS.get(best, best).split(':')[0]})", fontsize=7)
+    figure.colorbar(image, ax=right, fraction=0.04, pad=0.02)
+    figure.tight_layout(pad=0.4)
+    figure.savefig(figs / "e4_curriculum.pdf")
+    plt.close(figure)
+    baselines = summary.get("baselines", {})
+    for game in chain + held:
+        rnd = baselines.get(game, {}).get("random", [])
+        scr = baselines.get(game, {}).get("scratch", [])
+        if rnd:
+            macros.add(macro_name("Efour", game, "random"), f"{np.mean(rnd):.0f}")
+        if scr:
+            macros.add(macro_name("Efour", game, "scratch"), f"{np.mean(scr):.0f}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--e1", type=Path, default=ROOT / "artifacts/ares_u/battle/final")
@@ -339,6 +422,11 @@ def main(argv: list[str] | None = None) -> None:
         e3_assets(args.e3, generated, figs, macros)
     else:
         print(f"[skip] E3: {args.e3 / 'summary.json'} missing")
+    e4_summary = ROOT / "artifacts/ares_u/e4/summary.json"
+    if e4_summary.exists():
+        e4_assets(json.loads(e4_summary.read_text(encoding="utf-8")), figs, macros)
+    else:
+        print(f"[skip] E4: {e4_summary} missing")
     (generated / "numbers.tex").write_text(macros.text(), encoding="utf-8")
     print(generated)
 
