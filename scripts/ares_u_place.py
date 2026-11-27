@@ -18,8 +18,14 @@ running: distinct maps per episode (RAM, never seen by the agent) higher than sc
 hierarchical-bootstrap interval above 0 in at least 2 of the 3 games, without losing more than 10% of
 the unique screens.
 
-    python -m scripts.ares_u_place protocol --seeds 0 1 2
-    python -m scripts.ares_u_place summary
+E6 (``--place-coef 1``) failed its criterion; its *training logs* show why: ~3 place bonuses per 512
+steps against ~250 new-screen bonuses, so the place signal was ~1% of the episodic reward mass. E6b sets
+the coefficient by a rule that does not look at test results, giving the place stream about half the mass
+of the screen stream (250 / 3 / 2 ~ 50), and keeps the same criterion.
+
+    python -m scripts.ares_u_place protocol --seeds 0 1 2                                   (E6)
+    python -m scripts.ares_u_place protocol --seeds 0 1 2 --place-coef 50 --tag c50         (E6b)
+    python -m scripts.ares_u_place summary [--tag c50]
 """
 from __future__ import annotations
 
@@ -34,7 +40,8 @@ from scripts.ares_u_nav import _run_phase
 from scripts.ares_u_scorecard import arms_for, baseline_path, ci_text, hboot
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "artifacts" / "ares_u" / "e6_place"
+BASE = ROOT / "artifacts" / "ares_u" / "e6_place"
+OUT = BASE
 GAMES = ("rojo", "cristal", "emerald")
 ENV_FLAGS = ["--episode-steps", "512", "--action-repeat", "24", "--frame-stack", "4"]
 
@@ -96,8 +103,12 @@ def main(argv: list[str] | None = None) -> None:
     protocol.add_argument("--episodes", type=int, default=8)
     protocol.add_argument("--num-envs", type=int, default=4)
     protocol.add_argument("--device", default="auto")
-    sub.add_parser("summary")
+    protocol.add_argument("--tag", default="", help="separate output folder (e.g. c50 for E6b)")
+    summary = sub.add_parser("summary")
+    summary.add_argument("--tag", default="")
     args = parser.parse_args(argv)
+    global OUT
+    OUT = BASE / args.tag if args.tag else BASE
     if args.command == "protocol":
         for seed in args.seeds:
             run_seed(seed, args)
