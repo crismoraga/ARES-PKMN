@@ -110,7 +110,8 @@ def cmd_train(args: argparse.Namespace) -> None:
     from ares_u.nav.train import TrainConfig, train_ppo_rnd
     config = TrainConfig(game=args.game, out_dir=args.out_dir, total_steps=args.steps, num_envs=args.num_envs,
                          rollout_len=args.rollout_len, lr=args.lr, ent_coef=args.ent_coef,
-                         rnd_coef=args.rnd_coef, epi_coef=args.epi_coef, reward_norm_decay=args.reward_norm_decay,
+                         rnd_coef=args.rnd_coef, epi_coef=args.epi_coef, place_coef=args.place_coef,
+                         reward_norm_decay=args.reward_norm_decay,
                          hash_rows=args.hash_rows, hash_cols=args.hash_cols, hash_levels=args.hash_levels,
                          center_rnd=args.center_rnd, target_kl=args.target_kl,
                          init=args.init, random_policy=args.random_policy, seed=args.seed, device=args.device,
@@ -717,6 +718,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ent-coef", type=float, default=0.01)
     p.add_argument("--rnd-coef", type=float, default=0.5)
     p.add_argument("--epi-coef", type=float, default=1.0, help="0 disables the episodic frame-key bonus")
+    p.add_argument("--place-coef", type=float, default=0.0, help="> 0 adds the pixel place-novelty bonus")
     p.add_argument("--reward-norm-decay", type=float, default=0.9, help=">= 1 uses all-history statistics")
     p.add_argument("--hash-rows", type=int, default=5)
     p.add_argument("--hash-cols", type=int, default=7)

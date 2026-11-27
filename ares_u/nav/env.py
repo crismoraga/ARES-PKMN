@@ -86,6 +86,7 @@ class NavConfig:
     noop_max: int = 30
     # Optional pool of start savestates; ``reset`` draws one uniformly (used for diverse AE frames).
     start_states: tuple[str, ...] = ()
+    detect_transitions: bool = False  # pixel-only "screen went blank" detector (place novelty)
 
     def __post_init__(self) -> None:
         if self.game not in GAMES:
@@ -232,6 +233,19 @@ def native_bridge_factory(config: NavConfig) -> BridgeLike:
     return NativeLibMGBABridge(config.dll_path, config.resolved_rom(), is_emerald=config.game == "emerald")
 
 
+BLANK_STD = 8.0  # grey-level std below which a frame counts as a fade (black or white)
+
+
+def frame_is_blank(framebuffer: NDArray[np.uint32]) -> bool:
+    """Near-uniform frame: the fade-out every Pokemon generation shows when the player changes place.
+
+    Pixels only (a strided grey version of the framebuffer); the RAM is never read here.
+    """
+    sub = np.asarray(framebuffer)[::6, ::6].astype(np.uint32)
+    gray = 0.299 * (sub & 0xFF) + 0.587 * ((sub >> 8) & 0xFF) + 0.114 * ((sub >> 16) & 0xFF)
+    return float(gray.std()) < BLANK_STD
+
+
 class NavEnv:
     """Gym-like single environment: ``reset() -> obs`` and ``step(a) -> (obs, r, term, trunc, info)``.
 
@@ -257,6 +271,7 @@ class NavEnv:
         self.episodes = 0
         self.start_index = 0
         self._held = 0
+        self._ended_blank = False
 
     def _frame(self) -> UInt8Array:
         return self._pre(self.bridge.framebuffer())
@@ -298,6 +313,7 @@ class NavEnv:
         if cell[0] >= 0:  # the start state is a settled position, so a single read is trusted
             self.cells.visit(cell)
         self._prev_sample = cell
+        self._ended_blank = False
         self.steps = 0
         self.episodes += 1
         return self._stack.copy()
@@ -309,6 +325,7 @@ class NavEnv:
         held_frames = self.config.action_repeat if action in DIRECTION_ACTIONS or action == 0 \
             else self.config.button_frames
         samples: list[Cell] = []
+        blank_seen = self._ended_blank  # a one-step fade (Gen 2) ends blank and resolves in the next step
         for frame_index in range(self.config.action_repeat):
             if frame_index == 0:
                 self._press(keys)
@@ -318,7 +335,13 @@ class NavEnv:
             # Walking takes 16 frames per tile, so sampling every 4 frames sees every tile crossed.
             if (frame_index + 1) % CELL_SAMPLE_FRAMES == 0 and frame_index + 1 < self.config.action_repeat:
                 samples.append(self._read_cell())
-        frame = self._frame()
+                if self.config.detect_transitions and not blank_seen:
+                    blank_seen = frame_is_blank(self.bridge.framebuffer())
+        raw = self.bridge.framebuffer()
+        frame = self._pre(raw)
+        final_blank = bool(self.config.detect_transitions and frame_is_blank(raw))
+        transition = bool(self.config.detect_transitions and blank_seen and not final_blank)
+        self._ended_blank = final_blank
         self._stack[:-1] = self._stack[1:]
         self._stack[-1] = frame
         self.screens.add(screen_key(frame))
@@ -335,7 +358,7 @@ class NavEnv:
             "cell": cell, "step_cells": step_cells, "new_cell": new_cell, "episode_cells": len(self.cells),
             "episode_maps": len(self.cells.maps()), "episode_screens": len(self.screens),
             "in_battle": self._in_battle(), "t": self.steps,
-            "unconfirmed_samples": unconfirmed,
+            "unconfirmed_samples": unconfirmed, "transition": transition,
         }
         return self._stack.copy(), 0.0, False, truncated, info
 

@@ -34,7 +34,7 @@ from torch.optim.optimizer import Optimizer
 
 from ares_u.nav.env import NUM_ACTIONS, Cell, NavConfig, SubprocVecEnv, make_configs
 from ares_u.nav.models import ActorCritic, ConvAutoencoder, RNDModel, categorical_log_prob_entropy
-from ares_u.nav.novelty import EpisodicNovelty
+from ares_u.nav.novelty import EpisodicNovelty, PlaceNovelty
 
 UInt8Array = NDArray[np.uint8]
 Float64Array = NDArray[np.float64]
@@ -440,6 +440,7 @@ class TrainConfig:
     max_grad_norm: float = 0.5
     rnd_coef: float = 0.5
     epi_coef: float = 1.0  # 0 -> RND only (the episodic head is still fitted, for diagnostics)
+    place_coef: float = 0.0  # > 0 adds the pixel place-novelty bonus (fade -> new scene) to the episodic stream
     reward_norm_decay: float = 0.9  # EMA decay per update of the return-std normalisers; >= 1 -> all history
     hash_rows: int = 5
     hash_cols: int = 7
@@ -633,7 +634,7 @@ def train_ppo_rnd(config: TrainConfig) -> dict[str, Any]:
     out = Path(config.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     metrics_path = out / "metrics.jsonl"
-    env = config.env
+    env = replace(config.env, detect_transitions=True) if config.place_coef > 0 else config.env
     model = build_actor_critic(env)
     init_note = _initialise(model, config.init)
     model.to(device)
@@ -666,6 +667,8 @@ def train_ppo_rnd(config: TrainConfig) -> dict[str, Any]:
     summary: dict[str, Any] = {}
     novelty = EpisodicNovelty(n_envs, env.obs_height, env.obs_width, config.hash_rows, config.hash_cols,
                               config.hash_levels)
+    places = PlaceNovelty(n_envs, env.obs_height, env.obs_width)
+    place_total = 0.0
     log, rng = state.log, state.rng
 
     with SubprocVecEnv(make_configs(env, n_envs),
@@ -700,6 +703,11 @@ def train_ppo_rnd(config: TrainConfig) -> dict[str, Any]:
                 obs, dones, infos = venv.step(actions)
                 buf_next[t] = _newest(obs)
                 buf_epi[t] = novelty.step(obs[:, -1], dones)
+                if config.place_coef > 0:
+                    transitions = np.asarray([bool(info.get("transition", False)) for info in infos])
+                    place_bonus = places.step(obs[:, -1], transitions, dones)
+                    place_total += float(place_bonus.sum())
+                    buf_epi[t] += config.place_coef * place_bonus
                 buf_dones[t] = dones
                 buf_actions[t] = actions
                 np.add.at(action_counts, actions, 1)
@@ -716,7 +724,7 @@ def train_ppo_rnd(config: TrainConfig) -> dict[str, Any]:
                                    "episode_maps_recent_mean": float(np.mean(log.recent_episode_maps))
                                    if log.recent_episode_maps else None,
                                    "episode_frame_keys_finished": keys_finished,
-                                   "epi_new_key_fraction": float(buf_epi.mean()),
+                                   "epi_new_key_fraction": float(buf_epi.mean()), "place_bonus_total": place_total,
                                    "battle_fraction": log.battle_steps / max(1, log.steps),
                                    "unconfirmed_samples": log.unconfirmed_samples,
                                    "action_hist": (action_counts / batch).round(4).tolist()}

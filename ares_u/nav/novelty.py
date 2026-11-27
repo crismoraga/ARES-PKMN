@@ -42,6 +42,33 @@ class FrameCellHasher:
         return [image.tobytes() for image in self.small(frames)]
 
 
+class PlaceNovelty:
+    """Bonus 1.0 for arriving, right after a fade, at a scene not reached after a fade this episode.
+
+    The saga changes place (door, cave, route edge) through a fade to black or white; the first frame after
+    the fade identifies the new place. Coarser than the screen keys, so walking inside one place does not
+    count as a new place. Pixels only.
+    """
+
+    def __init__(self, num_envs: int, height: int, width: int, rows: int = 4, cols: int = 4, levels: int = 4) -> None:
+        self.hasher = FrameCellHasher(height, width, rows, cols, levels)
+        self.seen: list[set[bytes]] = [set() for _ in range(num_envs)]
+
+    def reset(self, frames: UInt8Array) -> None:
+        self.seen = [{key} for key in self.hasher.keys(frames)]
+
+    def step(self, frames: UInt8Array, transitions: NDArray[np.bool_], dones: NDArray[np.bool_]) -> Float64Array:
+        bonus = np.zeros(len(self.seen), dtype=np.float64)
+        keys = self.hasher.keys(frames)
+        for index, key in enumerate(keys):
+            if dones[index]:
+                self.seen[index] = {key}  # the first frame of the next episode: its starting place
+            elif transitions[index] and key not in self.seen[index]:
+                self.seen[index].add(key)
+                bonus[index] = 1.0
+        return bonus
+
+
 class EpisodicNovelty:
     """Per-environment episodic sets of frame keys; bonus 1.0 for a key not yet seen this episode."""
 
