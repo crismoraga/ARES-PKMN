@@ -41,7 +41,13 @@
 - **Severidad: Alta.** Es crítica para la transferencia.
 - **Cómo lo aborda ARES-U.**
   - *Mecanismo*: en E2 la observación es **solo píxeles** (84×84 en gris, con apilado de frames). La RAM se usa **solo para medir** (mapa, x, y) y nunca entra a la política. En E1 la observación del combate son **features públicas y semánticas** (tipos, stats base, fracción de HP, estado, boosts), que equivalen a lo que un humano ve o puede inferir.
-  - *Verificación*: en E2 se registran las direcciones de RAM que lee el código de la política (la respuesta esperada es cero). *[LP]*: una **ablación con y sin adaptador simbólico** (feature dropout) para cuantificar "cuánto aporta la RAM".
+  - *Verificación*: los tests de E2 lo comprueban de forma automática:
+    - `test_ram_is_not_in_observation`: la RAM no aparece en la observación.
+    - `test_observation_only_depends_on_framebuffer`: la observación es función solo del framebuffer.
+    - `test_learner_is_invariant_to_ram`: el learner da el mismo resultado si se altera la RAM.
+    - `test_episodic_novelty_is_pixel_only`: la novedad episódica usa solo píxeles.
+
+    *[LP]*: una **ablación con y sin adaptador simbólico** (feature dropout) para cuantificar "cuánto aporta la RAM".
 - **Sin resolver.** En el combate, E1 asume que existe un extractor de entidades. Desde píxeles habría que reconocer especie y HP en pantalla, cosa que no se demuestra esta semana.
 
 ### V3. Recompensas hechas a mano y específicas del juego
@@ -111,7 +117,7 @@
 - **Cómo lo aborda ARES-U.**
   - *Mecanismo, E1*: se entrena **solo con Gen 1** (#1-151) y se evalúa **zero-shot** con especies de **Gen 2 (#152-251) y Gen 3 (#252-386)** nunca vistas. *E2*: se transfiere el encoder y la política de FireRed a Emerald.
   - *Verificación*:
-    - E1: la **brecha de generalización** (win rate en Gen1 hold-out menos win rate en Gen2/Gen3 contra los mismos oponentes), con 5 semillas, IC 95 % (Wilson y bootstrap) y Mann-Whitney con Holm.
+    - E1: la **brecha de generalización**, calculada como puntaje en Gen1 (equipos nuevos de la distribución de entrenamiento) menos puntaje en Gen2/Gen3 contra los mismos oponentes. Se usan 5 semillas, IC 95% bootstrap sobre pares de equipos y un test de permutación (`ares_u/battle/paired.py`). Se compara con la ablación con IDs (H2).
     - E2: celdas únicas en Emerald, desde cero frente a transferido.
     - *[LP]*: protocolo **leave-one-game-out** entre Gen 1-4.
 - **Sin resolver.**
@@ -180,7 +186,9 @@
   - **ARES-PKMN**: entrenamiento con **1 semilla (42)** en ~80 s (`notas/repo_neural_stadium.md` §1.4), y un test que depende del estado de `artifacts/` (`tests/test_navigation_recovery.py:84`) [V repo].
 - **Severidad: Alta.**
 - **Cómo lo aborda ARES-U.**
-  - *Mecanismo*: el protocolo de `PLAN_IPD434.md` exige **5 semillas por método** en E1 y 3 en E2, el **mismo presupuesto de pasos**, N ≥ 500 combates por par y split con lados alternados, IC 95 % (Wilson y bootstrap), Mann-Whitney con Holm, y reporte de tiempo de pared y hardware. Se publican el código y las configuraciones.
+  - *Mecanismo*: el protocolo exige **5 semillas por método** en E1 y 3 en E2, el **mismo presupuesto de pasos** y 500 combates por split y oponente, en pares de equipos con asientos intercambiados. Como todos los métodos juegan los mismos combates, el análisis principal es **pareado a nivel de combate**: permutación por cambio de signo e IC bootstrap sobre pares. Una familia de 4 hipótesis **pre-registradas** en el código (commit `53d61ec`) se corrige con Holm. La variabilidad entre semillas se reporta aparte (d.e. e IC $t$), junto con el tiempo de pared y el hardware. Se publican el código y las configuraciones.
+
+    El diseño inicial (Mann-Whitney sobre 5 semillas con Holm sobre 12 comparaciones) se descartó: con 5 contra 5 el p mínimo alcanzable es 0.0079, y Holm lo eleva a ≥ 0.095, así que **nunca** podía rechazar. Ese error de diseño lo detectó la revisión adversarial.
   - *Verificación*: la tabla de resultados del informe muestra la media ± desviación estándar entre semillas y los IC.
 - **Sin resolver.** Cinco semillas siguen siendo pocas para efectos pequeños; el paper GAME usa 20 réplicas.
 

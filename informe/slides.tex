@@ -54,7 +54,7 @@
 
 \begin{frame}{Vicios del estado del arte (17 + 6 propios catalogados)}
 \small
-\begin{tabular}{p{0.33\textwidth}p{0.6\textwidth}}
+\begin{tabular}{p{0.30\textwidth}p{0.58\textwidth}}
 \toprule
 Vicio & Evidencia \\
 \midrule
@@ -137,10 +137,21 @@ Brecha Gen1$-$Gen3 (PPO vs Greedy): \textbf{\val{EoneGapPpoGreedyGenThree}} [\va
 
 \begin{frame}{¿Cuánto margen hay? Análisis del techo}
 \begin{itemize}
-\item Greedy vs Greedy con asientos intercambiados: el \textbf{99\%} de los pares lo decide el \emph{equipo}, no la política.
-\item Búsqueda \emph{lookahead} con acceso al simulador (que el agente no tiene): \textbf{0.62} contra Greedy.
+\item Greedy vs Greedy con asientos intercambiados: en el \textbf{99\%} de los pares gana el mismo \emph{equipo} en ambos asientos.
+\item Planificador Monte Carlo con \textbf{información completa} (ve lo oculto, usa el simulador, sabe que el rival es Greedy): \textbf{0.62} contra Greedy. Optimista, no es cota estricta.
 \item $\Rightarrow$ las ventajas reales son de pocos puntos: para detectarlas hacen falta tests \textbf{pareados} y muchos combates.
-\item PPO-Transformer vs Greedy en Gen3$^\ast$: \textbf{\val{EonePpoGreedyGenThree}} [\val{EonePpoGreedyGenThreeLo}, \val{EonePpoGreedyGenThreeHi}].
+\item PPO-Transformer vs Greedy en Gen3$^\ast$: \textbf{\val{EonePpoGreedyGenThree}} [\val{EonePpoGreedyGenThreeLo}, \val{EonePpoGreedyGenThreeHi}], sin ver el estado oculto ni simular.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Vicios medidos, no solo declarados}
+\centering\scriptsize
+\inputgen{tab_vice.tex}
+
+\vspace{0.3cm}\small
+\begin{itemize}
+\item \emph{Panic switching}: PPO \val{EoneVicePpoPanicSwitchRate}, DQN \val{EoneViceDqnPanicSwitchRate}, aleatorio \val{EoneViceRandomPanicSwitchRate}.
+\item Cómputo total de E1: \val{EoneComputeHours} h de pared en un PC (Ryzen 5700X3D + RX 6700 XT).
 \end{itemize}
 \end{frame}
 
@@ -149,7 +160,7 @@ Brecha Gen1$-$Gen3 (PPO vs Greedy): \textbf{\val{EoneGapPpoGreedyGenThree}} [\va
 \column{0.45\textwidth}
 \small
 \begin{itemize}
-\item mGBA crudo, 8 botones + NOOP, pila de 4 cuadros $84\times84$.
+\item mGBA crudo, 8 botones + NOOP (24 cuadros por paso), pila de 4 cuadros $84\times84$.
 \item RAM \textbf{solo} para medir celdas (mapa, $x$, $y$).
 \item AE convolucional preentrenado en FireRed. \hfill\emph{05-3}
 \item PPO + RND + novedad episódica.

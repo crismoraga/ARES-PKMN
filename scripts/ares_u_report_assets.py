@@ -16,6 +16,7 @@ import json
 import re
 import shutil
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 METHOD_NAMES = {"bc": "BC (imitación)", "ppo": "PPO-Transformer", "bc_ppo": "BC$\\to$PPO",
@@ -84,7 +85,7 @@ def e1_assets(run: Path, out: Path, figs: Path, macros: Macros) -> None:
             cells = []
             for split in splits:
                 entry = scores[method].get(split, {}).get(opponent)
-                cells.append("--" if not entry else f"{entry['mean']:.3f} \\tiny{{$\\pm${(entry['pair_ci'][1] - entry['pair_ci'][0]) / 2:.3f}}}")
+                cells.append("--" if not entry else f"{entry['mean']:.3f} \\tiny{{$\\pm${seed_sd(entry):.3f}}}")
             rows.append(f"{METHOD_NAMES.get(method, method)} & " + " & ".join(cells) + " \\\\")
         for row in ("greedy", "prior", "random"):
             by_split = paired.get("baselines", {}).get(row, {})
@@ -112,12 +113,126 @@ def e1_assets(run: Path, out: Path, figs: Path, macros: Macros) -> None:
         source = run / "figures" / name
         if source.exists():
             shutil.copy2(source, figs / f"e1_{name}")
+    e1_figure(paired, figs)
+    if (run / "summary.json").exists():
+        e1_vices_and_compute(json.loads((run / "summary.json").read_text(encoding="utf-8")), paired["methods"], out,
+                             macros)
+
+
+VICE_KEYS = (("mean_turns", "Turnos", "{:.1f}"), ("switch_rate", "Cambios", "{:.3f}"),
+             ("panic_switch_rate", "Pánico", "{:.3f}"), ("ineffective_rate", "Inútil", "{:.3f}"))
+
+
+def seed_sd(entry: dict[str, Any]) -> float:
+    """Sample standard deviation of the per-seed mean scores (0 with a single seed)."""
+    values = [float(value) for value in entry.get("seed_means", [])]
+    if len(values) < 2:
+        return 0.0
+    mean = sum(values) / len(values)
+    return float((sum((value - mean) ** 2 for value in values) / (len(values) - 1)) ** 0.5)
+
+
+def e1_vices_and_compute(summary: dict[str, Any], methods: list[str], out: Path, macros: Macros) -> None:
+    """Anti-vice metrics against Greedy (mean over the evaluation splits) and wall-clock accounting."""
+    table: dict[str, Any] = summary["table"]
+    baselines = summary.get("baselines")
+    matrix: dict[str, Any] = baselines.get("matrix", {}) if isinstance(baselines, dict) else {}
+
+    def averaged(rows: list[dict[str, Any]]) -> list[str]:
+        return [fmt.format(sum(float(row[key]) for row in rows) / len(rows))
+                if rows and all(key in row for row in rows) else "--" for key, _, fmt in VICE_KEYS]
+
+    lines = ["\\begin{tabular}{l" + "c" * (len(VICE_KEYS) + 1) + "}", "\\toprule",
+             "Agente & " + " & ".join(label for _, label, _ in VICE_KEYS) + " & Min/sem. \\\\", "\\midrule"]
+    walls: dict[str, Any] = summary.get("walls", {})
+    total_seconds = 0.0
+    for method in methods:
+        rows = [by_opp["greedy"] for by_opp in table.get(method, {}).values() if "greedy" in by_opp]
+        wall = walls.get(method, {})
+        minutes = float(wall.get("wall_mean_s", float("nan"))) / 60
+        total_seconds += float(wall.get("wall_mean_s", 0.0)) * float(wall.get("seeds", 0.0))
+        values = averaged(rows)
+        for (key, _, _), value in zip(VICE_KEYS, values):
+            macros.add(macro_name("Eone", "vice", method, key), value)
+        macros.add(macro_name("Eone", "wall", method), f"{minutes:.1f}")
+        lines.append(f"{METHOD_NAMES.get(method, method)} & " + " & ".join(values) + f" & {minutes:.1f} \\\\")
+    for row in ("greedy", "prior", "random"):
+        rows = [by_row[row]["greedy"] for by_row in matrix.values() if row in by_row and "greedy" in by_row[row]]
+        if rows:
+            values = averaged(rows)
+            for (key, _, _), value in zip(VICE_KEYS, values):
+                macros.add(macro_name("Eone", "vice", row, key), value)
+            lines.append(f"{BASELINE_NAMES[row]} & " + " & ".join(values) + " & -- \\\\")
+    lines += ["\\bottomrule", "\\end{tabular}"]
+    (out / "tab_vice.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    macros.add("EoneComputeHours", f"{total_seconds / 3600:.1f}")
+
+
+FIGURE_METHODS = ("ppo", "bc_ppo", "bc", "dqn", "ppo_ids")
+FIGURE_COLORS = {"ppo": "#B3261E", "bc_ppo": "#E8710A", "bc": "#9AA0A6", "dqn": "#1A73E8", "ppo_ids": "#5F6368"}
+FIGURE_LABELS = {"ppo": "PPO-Transformer", "bc_ppo": "BC→PPO", "bc": "BC", "dqn": "DQN-MLP", "ppo_ids": "PPO + IDs"}
+
+
+def e1_figure(paired: dict[str, Any], figs: Path) -> Path | None:
+    """One-column figure: score vs Greedy per split (pair 95% CI), with the prior heuristic as reference."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    splits = [split for split in ("gen1_train", "gen1_heldout", "gen2", "gen3") if split in paired["splits"]]
+    methods = [method for method in FIGURE_METHODS if method in paired["scores"]]
+    if not splits or not methods:
+        return None
+    labels = {"gen1_train": "Gen1", "gen1_heldout": "Gen1-H", "gen2": "Gen2*", "gen3": "Gen3*"}
+    plt.rcParams.update({"font.size": 7, "axes.linewidth": 0.6})
+    figure, axis = plt.subplots(figsize=(3.45, 2.25))
+    width = 0.8 / len(methods)
+    for offset, method in enumerate(methods):
+        xs, ys, low_err, high_err = [], [], [], []
+        for index, split in enumerate(splits):
+            entry = paired["scores"][method].get(split, {}).get("greedy")
+            if not entry:
+                continue
+            xs.append(index + (offset - (len(methods) - 1) / 2) * width)
+            ys.append(entry["mean"])
+            low_err.append(max(0.0, entry["mean"] - entry["pair_ci"][0]))
+            high_err.append(max(0.0, entry["pair_ci"][1] - entry["mean"]))
+        axis.bar(xs, ys, width * 0.92, yerr=[low_err, high_err], capsize=1.5, color=FIGURE_COLORS[method],
+                 label=FIGURE_LABELS[method], error_kw={"elinewidth": 0.6})
+    prior = paired.get("baselines", {}).get("prior", {})
+    prior_points = [(index, prior[split]["greedy"]["mean"]) for index, split in enumerate(splits)
+                    if "greedy" in prior.get(split, {})]
+    if prior_points:
+        axis.scatter([point[0] for point in prior_points], [point[1] for point in prior_points], marker="_", s=220,
+                     color="black", linewidths=1.2, zorder=4, label="Prior ARES")
+    axis.axhline(0.5, color="#5F6368", linestyle="--", linewidth=0.7)
+    axis.set_xticks(range(len(splits)), [labels[split] for split in splits])
+    axis.set_ylabel("Puntaje vs Greedy")
+    lows = [entry["greedy"]["pair_ci"][0] for method in methods for entry in paired["scores"][method].values()
+            if "greedy" in entry]
+    axis.set_ylim(max(0.0, min(lows + [0.45]) - 0.03), 0.7)
+    axis.legend(fontsize=5.5, ncol=3, loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False,
+                handlelength=1.2, columnspacing=0.8, borderaxespad=0.2)
+    axis.spines[["top", "right"]].set_visible(False)
+    figure.tight_layout(pad=0.3)
+    path = figs / "e1_transfer.pdf"
+    figure.savefig(path)
+    plt.close(figure)
+    return path
+
+
+def report_bib(source: Path, target: Path) -> None:
+    """Report-only copy of the bibliography without the arXiv URLs (the arXiv id already identifies them)."""
+    lines = source.read_text(encoding="utf-8").splitlines()
+    kept = [line for line in lines if not re.match(r"\s*url\s*=\s*\{https?://arxiv\.org/", line)]
+    target.write_text("\n".join(kept) + "\n", encoding="utf-8")
 
 
 def e2_assets(run: Path, out: Path, figs: Path, macros: Macros) -> None:
     summary = json.loads((run / "summary.json").read_text(encoding="utf-8"))
-    rows = ["\\begin{tabular}{lccc}", "\\toprule", "Método (Emerald) & Celdas/episodio & Semillas & Mapas \\\\",
-            "\\midrule"]
+    rows = ["\\begin{tabular}{lccc}", "\\toprule",
+            "Método (Emerald) & Celdas/ep.\\ (media $\\pm$ d.e.) & Por semilla & Mapas \\\\", "\\midrule"]
     for entry in summary["eval"]:
         if entry["game"] != "emerald":
             continue
@@ -125,8 +240,9 @@ def e2_assets(run: Path, out: Path, figs: Path, macros: Macros) -> None:
         macros.add(macro_name("Etwo", method, "cells"), f"{entry['mean_over_seeds']:.1f}")
         macros.add(macro_name("Etwo", method, "cells", "sd"), f"{entry['std_over_seeds']:.1f}")
         maps = entry.get("maps_mean", float("nan"))
+        per_seed = ", ".join(f"{float(value):.0f}" for value in entry.get("per_seed_mean", []))
         rows.append(f"{NAV_METHODS.get(method, method)} & {entry['mean_over_seeds']:.1f} $\\pm$ {entry['std_over_seeds']:.1f} & "
-                    f"{entry['seeds']} & {maps if isinstance(maps, str) else f'{float(maps):.2f}'} \\\\")
+                    f"{per_seed} & {maps if isinstance(maps, str) else f'{float(maps):.2f}'} \\\\")
     rows += ["\\bottomrule", "\\end{tabular}"]
     (out / "tab_e2.tex").write_text("\n".join(rows) + "\n", encoding="utf-8")
     macros.add("EtwoSeeds", str(max((int(entry["seeds"]) for entry in summary["eval"]), default=0)))
@@ -160,6 +276,7 @@ def main(argv: list[str] | None = None) -> None:
     generated.mkdir(parents=True, exist_ok=True)
     figs.mkdir(parents=True, exist_ok=True)
     macros = Macros()
+    report_bib(ROOT / "docs" / "investigacion" / "referencias.bib", generated / "refs.bib")
     if (args.e1 / "paired.json").exists():
         e1_assets(args.e1, generated, figs, macros)
     else:

@@ -15,7 +15,19 @@ La visión es un agente neuronal que juegue *cualquier* Pokémon aprendiendo los
 - **Observación agnóstica**: tokens de entidad por Pokémon (tipos one-hot, stats base normalizados, fracción de HP, estado, boosts, activo, propio o rival) y tokens de acción por movimiento (tipo, potencia, precisión, categoría, PP, efectividad contra el rival activo, STAB). **Sin IDs de especie ni de movimiento**, porque eso es lo que hace posible transferir. Las acciones ilegales se enmascaran.
 - **Modelo**: un Transformer pre-norm escrito a mano (es compatible con DirectML) con cabezas actor-crítico, entrenado con PPO por self-play y una liga de oponentes (instantáneas pasadas, Greedy y Random).
 - **Líneas base**: (a) Random; (b) Greedy máximo daño; (c) el prior experto heurístico existente de ARES (`MLPGenome.prior`); (d) **DQN-MLP** sobre features planas con el mismo presupuesto de pasos (el algoritmo canónico del curso, clase 05-1); (e) ablación: Transformer **con IDs de especie**, para mostrar que memorizar IDs impide transferir.
-- **Protocolo**: 5 semillas por método y presupuesto igual de pasos de entorno. La evaluación usa N ≥ 500 combates por par y por split, con lados alternados. Se reporta win-rate con IC 95% (Wilson y bootstrap entre semillas), media ± desv. estándar, Mann-Whitney con Holm, tiempo de pared y hardware.
+- **Métodos adicionales**, agregados tras los pilotos: **BC** (imitación del prior y de Greedy) y **BC→PPO** (warm-start). Las 300k demostraciones se descuentan del presupuesto.
+- **Protocolo** (versión final; ver `ares_u/battle/paired.py`):
+  - 5 semillas por método y $6\cdot10^6$ decisiones registradas por método RL.
+  - 500 combates por split y oponente, en pares de equipos con asientos intercambiados. Son los mismos combates para todos los métodos.
+  - Análisis principal **pareado a nivel de combate**: permutación por cambio de signo e IC bootstrap sobre pares.
+  - Familia **pre-registrada** H1-H4 con Holm: contra Greedy en Gen2/Gen3.
+    - H1: PPO > 0.5.
+    - H2: PPO > PPO+IDs.
+    - H3: PPO > DQN.
+    - H4: BC→PPO frente a PPO.
+  - Variabilidad entre semillas: media ± d.e. e IC $t$, más tiempo de pared y hardware.
+  - Las curvas durante el entrenamiento usan combates de validación disjuntos del test, y no se selecciona ningún checkpoint (se usa `final.pt`).
+  - El plan original de usar Mann-Whitney sobre las semillas se descartó: con Holm no podía alcanzar significancia.
 - **Métricas anti-vicio**: tasa de *panic switching* (cambios consecutivos), turnos por combate, tasa de acciones inútiles (movimiento inmune), brecha de generalización (Gen1 → Gen2/Gen3).
 - **Hardware**: RX 6700 XT vía DirectML en el proceso del learner (ver la nota de DirectML más abajo). Los rollouts van en CPU con varios procesos (Ryzen 5700X3D, 16 hilos).
 

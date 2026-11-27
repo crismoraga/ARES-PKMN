@@ -2,6 +2,20 @@
 
 ARES-PKMN es un agente de investigación para Pokémon FireRed y Emerald de tercera generación. Integra un emulador mGBA nativo, lectura de RAM, navegación, planificación, análisis de combate y modelos PyTorch. Las campañas nativas avanzan enviando botones al emulador; el laboratorio sintético sirve para pruebas repetibles y **no certifica** una partida real.
 
+## ARES-U: proyecto IPD434 (Seminario de Soft Computing, UTFSM, 2026-2)
+
+La rama `ipd434` agrega **ARES-U** (`ares_u/`), que estudia la pieza que le falta a un agente para *cualquier* Pokémon: **representaciones independientes del juego que transfieren** a contenido nunca visto, con un protocolo que evita los vicios documentados de los agentes de Pokémon existentes.
+
+- **E1, combate:** un Transformer de entidades sin IDs de especie ni de movimiento. Se entrena por self-play (PPO) solo con especies de Gen 1 y se evalúa zero-shot con especies de Gen 2 y Gen 3. Se compara contra heurísticas, DQN, imitación y una ablación con IDs, con 5 semillas y tests pareados pre-registrados.
+- **E2, exploración desde píxeles:** autoencoder, PPO, RND y novedad episódica, sin RAM en la observación, con transferencia de FireRed a Emerald.
+- Investigación en [`docs/investigacion/`](docs/investigacion/README.md):
+  - [estado del repositorio](docs/investigacion/ESTADO_REPOSITORIO.md)
+  - [estado del arte](docs/investigacion/ESTADO_DEL_ARTE.md)
+  - [vicios y soluciones](docs/investigacion/VICIOS_Y_SOLUCIONES.md)
+  - [videos y comunidad](docs/investigacion/VIDEOS_Y_COMUNIDAD.md)
+  - [cumplimiento](docs/investigacion/CUMPLIMIENTO.md)
+- Informe IEEE y diapositivas en [`informe/`](informe/README.md), con los comandos para reproducir cada número.
+
 Esta guía permite preparar Windows desde un clon limpio, ejecutar una campaña y observarla junto con el entrenamiento. El instalador usa Python 3.12 aislado en `.venv`; no instala paquetes en el Python global. La instalación descarga dependencias y fuentes fijadas, por lo que necesita Internet.
 
 ## Demostración Rápida en Convención (1-Click en cualquier PC)
