@@ -412,7 +412,14 @@ class AresAutonomousOrchestrator:
         if isinstance(opponents, dict) and data.get("opponents_version") == _OPPONENTS_VERSION:
             # Older rosters mixed in wild whiteouts and trainers met on the way.
             self.opponents.merge_state(opponents)
+        self._sync_boss_levels()
         self._world = ""  # recompute the active barrier set on the next plan
+
+    def _sync_boss_levels(self) -> None:
+        """Roster ceilings cap defeat-driven level targets (see readiness.assess)."""
+        for objective, roster in self.opponents.rosters.items():
+            if roster:
+                self.planner.boss_levels[objective] = max(int(level) for level in roster.values())
 
     def _load_lessons(self) -> None:
         if self.lessons_path is None or not self.lessons_path.is_file():
@@ -958,6 +965,17 @@ class AresAutonomousOrchestrator:
         self.observed_species.add(int(enemy.species))
         self._refresh_roster(party)
         belief = self._ensure_belief(enemy)
+        # ARES_BATTLE_BRAIN=learned (default, ares_u/brain/report.md) | heuristic. The brain defers
+        # (None) for doubles, wanted captures, story escapes, run/item; any error falls back below.
+        try:
+            from ares_u.brain.gen3_adapter import brain_mode, learned_battle_decision  # lazy: optional brain
+            learned = learned_battle_decision(self, party, features, me, enemy) if brain_mode() == "learned" else None
+        except Exception as exc:  # noqa: BLE001 - the analytic heuristic below is the safety net
+            learned, self.last_battle_choice = None, None
+            self._record("battle_brain_fallback", error=f"{type(exc).__name__}: {exc}"[:300])
+        if learned is not None:
+            return self._audit_decision(learned, me, enemy, len(features.switch_party_indices) + 4)
+        self.last_battle_choice = None
         if int(me.hp) > 0:
             proof, retaliation = self._incoming_assessment(me, enemy)
         else:
@@ -1293,6 +1311,9 @@ class AresAutonomousOrchestrator:
                 pre_battle = self._last_directive.get("pre_battle")
                 if pre_battle:
                     self.planner.preparation.record_restore(str(pre_battle))
+                    # Timeline-independent: a rewind must not reset the restore loop breaker.
+                    self._lessons_dirty = True
+                    self._save_lessons(force=True)
                 self._record("party_healed", members=len(party), pre_battle=pre_battle or None)
             self._party_was_hurt = not healthy
 
@@ -2485,6 +2506,7 @@ class AresAutonomousOrchestrator:
     def _update_counter_plan(self, objective: str) -> None:
         """Counter types against the remembered roster, and catchable species that carry them."""
         types = {species: self._species_types(species) for species in self.opponents.rosters.get(objective, {})}
+        self._sync_boss_levels()
         counters = self.opponents.counters(objective, types, self.shared.chart)
         if not counters:
             return

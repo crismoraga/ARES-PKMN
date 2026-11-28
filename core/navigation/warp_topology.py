@@ -184,6 +184,14 @@ class HierarchicalWarpGraph:
             # crosses Route104, but the field-ready landing is inside the house.
             graph._add_boat(catalog, "DewfordTown", "Route104_MrBrineysHouse", "Briney",
                             default=2, arrival_xy=(5, 4))
+            # Cable car (special CableCarWarp): SetWarpDestination(..., 6, 4) at
+            # the other station, then *_Movement_ExitCableCar walks down three
+            # tiles. The first way up to Maxie on Mt. Chimney: Jagged Pass is
+            # one-way ledges going down until the Acro Bike.
+            graph._add_boat(catalog, "Route112_CableCarStation", "MtChimney_CableCarStation", "Attendant",
+                            default=0, requirements=(), arrival_xy=(6, 7))
+            graph._add_boat(catalog, "MtChimney_CableCarStation", "Route112_CableCarStation", "Attendant",
+                            default=0, requirements=(), arrival_xy=(6, 7))
             graph._add_petalburg_script_doors(catalog)
         graph._add_elevators(catalog, game, warp_behaviors)
         return graph
