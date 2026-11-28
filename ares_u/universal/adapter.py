@@ -199,6 +199,10 @@ class GameAdapter(ABC):
         self.bridge: Any = bridge if bridge is not None else MGBAMultiBridge(spec)
         self._held = 0
         self.rom: bytes = Path(spec.rom).read_bytes() if Path(spec.rom).exists() else b""
+        self._settled_key: MapKey | None = None
+        self._settled_sig: bytes = b""
+        self.settle_waits = 0      # map transitions that needed waiting for the new map data
+        self.settle_timeouts = 0   # transitions whose data never changed (identical layouts)
 
     # ------------------------------------------------------------------ emulator
     @property
@@ -218,6 +222,7 @@ class GameAdapter(ABC):
         self._held = -1
         self.set_keys(0)
         self.invalidate()
+        self._settled_key, self._settled_sig = None, b""
 
     def set_keys(self, mask: int) -> None:
         if mask != self._held:
@@ -247,6 +252,44 @@ class GameAdapter(ABC):
     def close(self) -> None:
         self.bridge.close()
 
+    # ------------------------------------------------------------------ map transitions
+    def map_signature(self) -> bytes:
+        """Bytes that identify the *loaded* map data (header + block map). Subclasses override.
+
+        The map id byte changes several frames before the new header, warps, coordinates and blocks are
+        copied into RAM (Gen 1: ~33 frames through a door, ~10 across a connection), so the id alone
+        cannot tell that a transition finished."""
+        return b""
+
+    def ensure_settled(self, max_frames: int = 160) -> bool:
+        """If the map id changed since the last settled map, wait until the new map's data is in RAM.
+
+        Waits until :meth:`map_signature` differs from the previous map's and stays unchanged for 4
+        frames (or ``max_frames``). Returns True when it had to wait."""
+        key = self.position()[0]
+        if key == self._settled_key:
+            return False
+        if self._settled_key is None:  # first look after a load: nothing to compare with
+            self._settled_key, self._settled_sig = key, self.map_signature()
+            return False
+        self.set_keys(0)
+        before = self._settled_sig
+        last, stable, changed = b"", 0, False
+        for _ in range(max_frames):
+            self.bridge.step_frame()
+            sig = self.map_signature()
+            changed = changed or sig != before
+            stable = stable + 1 if sig == last else 0
+            last = sig
+            if changed and stable >= 4:
+                break
+        else:
+            self.settle_timeouts += 1
+        self.settle_waits += 1
+        self.invalidate()
+        self._settled_key, self._settled_sig = self.position()[0], self.map_signature()
+        return True
+
     # ------------------------------------------------------------------ movement
     def walk(self, direction: Direction, max_frames: int = 48) -> str:
         """Hold ``direction`` until the player moves one cell, the map changes or something interrupts.
@@ -254,6 +297,7 @@ class GameAdapter(ABC):
         Returns "moved", "warped", "blocked", "turned", "text", "battle" or "timeout". The RAM is the
         ground truth for the outcome (position, map, battle flag, dialog box).
         """
+        self.ensure_settled()
         start = self.position()
         self.set_keys(BUTTONS[direction])
         outcome = "blocked"
@@ -286,8 +330,7 @@ class GameAdapter(ABC):
             self.bridge.step_frame()
             settle += 1
         if outcome == "warped":
-            self.wait(4)
-            self.invalidate()
+            self.ensure_settled()
         return outcome
 
     def face_and_press(self, direction: Direction) -> None:

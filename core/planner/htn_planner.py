@@ -21,8 +21,8 @@ from core.navigation.source_data import ROOT, MapKey, SourceMapCatalog, load_map
 from core.navigation.constrained_astar import GbaConstrainedAStar, Matrix
 from core.navigation.puzzles import plan_sootopolis_ice_commands, plan_strength_commands
 from core.navigation.warp_topology import HierarchicalWarpGraph
-from core.planner.readiness import LOW_PP_FRACTION, CampaignPreparationPolicy, best_attack_pp
-from core.shopping import read_money, shopping_need
+from core.planner.readiness import FAR_RESTORE_CAVE_MAPS, FAR_RESTORE_TRIP, LOW_PP_FRACTION, CampaignPreparationPolicy, best_attack_pp
+from core.shopping import healing_stock, read_money, shopping_need
 
 
 @dataclass(frozen=True)
@@ -268,14 +268,14 @@ class HTNCampaignPlanner:
         self.shop_cooldown_until = 0
         self.wants_balls = True
         self._restoring_for = ""
-        # Far-trip rule: estimated walk (tile units) from a map to its nearest
-        # Pokemon Center, per (objective, map); and the last engage-as-is note.
-        self._restore_trip_cache: dict[tuple[str, MapKey], float] = {}
+        # Far-trip rule: the last engage-as-is note (shown live and logged).
         self.last_engage_note = ""
         # Learned from defeats: attack types that counter an objective's roster
         # and catchable species carrying them (set by the orchestrator).
         self.learned_counters: dict[str, list[int]] = {}
         self.counter_targets: dict[str, list[int]] = {}
+        # Highest level observed in each objective's roster (orchestrator fills it).
+        self.boss_levels: dict[str, int] = {}
         self._last_completed: frozenset[str] = frozenset()
         self._mart_targets: list[dict[str, Any]] | None = None
         self._validate_dag()
@@ -325,20 +325,63 @@ class HTNCampaignPlanner:
                 walk += abs(int(nurse[0]["x"]) - entry[0]) + abs(int(nurse[0]["y"]) - entry[1])
                 candidates.append((walk, nurse[0]))
         ranked = sorted(candidates, key=lambda value: value[0])
-        for _, target in ranked[:8]:
+        for walk, target in ranked[:8]:
             target_key = int(target["map_group"]), int(target["map_num"])
             route = self.graph.find_route(current, target_key, completed, (coords["x"], coords["y"]), bridge)
             if route is not None:
+                caves = sum(1 for edge in route
+                            if self.catalog.maps.get(edge.source, {}).get("map_type") == "MAP_TYPE_UNDERGROUND")
                 result.update(dest=(*target_key, (target["x"], target["y"])),
-                              script=target["script"], npc_local_id=target["npc_local_id"])
+                              script=target["script"], npc_local_id=target["npc_local_id"],
+                              trip_cost=round(walk, 1), trip_cave_maps=caves, trip_validated=True)
                 break
         if "dest" not in result and ranked:
             # Live validation can fail transiently (warp frames); the nearest
             # topologically reachable nurse is still the right destination.
-            target = ranked[0][1]
+            walk, target = ranked[0]
             result.update(dest=(int(target["map_group"]), int(target["map_num"]), (target["x"], target["y"])),
-                          script=target["script"], npc_local_id=target["npc_local_id"])
+                          script=target["script"], npc_local_id=target["npc_local_id"], trip_cost=round(walk, 1),
+                          trip_validated=False)
         return result
+
+    def _pre_battle_restore(self, bridge: GBABridgeProtocol, objective: str, party: list[dict[str, Any]],
+                            engage: str, completed: frozenset[str]) -> dict[str, Any] | None:
+        """The heal trip before a boss, or None to engage as is (note in ``last_engage_note``).
+
+        Deep in a dungeon the round trip to the center costs more than it buys
+        and the walk back undoes it (Mt. Moon B2F <-> Route 4 loop), so a lead
+        still fit to fight engages instead of leaving.
+        """
+        self._restoring_for = objective
+        hp = sum(int(mon["hp"]) for mon in party)
+        max_hp = max(1, sum(int(mon["maxHP"]) for mon in party))
+        restore = self._healing_directive(bridge, hp, max_hp, completed)
+        if "dest" not in restore or restore.get("trip_validated") is False:
+            # Inside one-way puzzle rooms (Petalburg Gym doors) the center is only
+            # topologically "reachable": an optional trip must not strand the agent.
+            self._restoring_for = ""
+            self.last_engage_note = f"No walkable way to a Pokemon Center before {objective}; engage as is"
+            return None
+        trip = float(restore.get("trip_cost", 0.0))
+        caves = int(restore.get("trip_cave_maps", 0))
+        if trip >= FAR_RESTORE_TRIP or caves >= FAR_RESTORE_CAVE_MAPS:
+            far = self.preparation.far_trip_engage_reason(objective, party, self.move_info, self.species_types,
+                                                          self._bag_healing_hp(bridge))
+            if far is not None:
+                self._restoring_for = ""
+                self.last_engage_note = f"{far} (center {round(trip)} tiles, {caves} cave floors away)"
+                return None
+        restore.update(reason=engage, pre_battle=objective, milestone=objective)
+        return restore
+
+    def _bag_healing_hp(self, bridge: GBABridgeProtocol) -> int:
+        """HP the bag's potions can restore mid-fight (0 when unreadable)."""
+        if self.catalog is None:
+            return 0
+        try:
+            return healing_stock(dict(bridge.get_inventory()), self.catalog.constants)
+        except (AttributeError, KeyError, ValueError, RuntimeError, OSError):
+            return 0
 
     def _training_directive(self, bridge: GBABridgeProtocol, task: CampaignMilestone,
                              completed: frozenset[str], party: list[dict[str, Any]]) -> dict[str, Any]:
@@ -376,7 +419,7 @@ class HTNCampaignPlanner:
                 point = next((xy for xy in grass if local.find_optimal_path((coords["x"], coords["y"], coords["z"]), xy) is not None), None)
                 if point is None:
                     continue
-                candidates.append((0, key, point))
+                candidates.append((self._xp_penalty(key, party), key, point))
                 continue
             route = self.graph.find_route(current, key, completed, (coords["x"], coords["y"]), bridge)
             if route is not None:
@@ -391,7 +434,7 @@ class HTNCampaignPlanner:
                 if point is None:
                     continue
                 cost = self.graph.estimate_route_cost(route, (coords["x"], coords["y"])) + abs(point[0] - entry[0]) + abs(point[1] - entry[1])
-                candidates.append((cost + len(route), key, point))
+                candidates.append((cost + len(route) + self._xp_penalty(key, party), key, point))
         if candidates:
             _, key, point = min(candidates, key=lambda entry: entry[0])
             result.update(dest=(*key, point), action="train", training_route=self.catalog.maps[key]["name"])
@@ -433,6 +476,23 @@ class HTNCampaignPlanner:
                                 "risk_model": "level_and_hp_prior; update with observed outcomes"})
             result["training_candidates"] = choices
         return result
+
+    # Tile-equivalents charged per level the wild Pokemon sit below the lead:
+    # XP scales with the defeated level, so Route 3 (L6) grinds a L19 lead at
+    # ~60% of Route 4's (L10) rate and is only worth it when much closer.
+    TRAINING_XP_TILES_PER_LEVEL = 8.0
+
+    def _xp_penalty(self, key: MapKey, party: list[dict[str, Any]]) -> float:
+        if self.catalog is None or not party:
+            return 0.0
+        raw = self.catalog.maps.get(key)
+        land = self.catalog.land_encounters.get(str(raw["id"])) if raw is not None else None
+        mons = land.get("mons", []) if isinstance(land, dict) else []
+        if not mons:
+            return 0.0
+        wild = sum((int(mon["min_level"]) + int(mon["max_level"])) / 2 for mon in mons) / len(mons)
+        lead = max(int(mon["level"]) for mon in party)
+        return self.TRAINING_XP_TILES_PER_LEVEL * max(0.0, lead - 2 - wild)
 
     def _land_species(self, key: MapKey) -> frozenset[int]:
         if self.catalog is None:
@@ -744,7 +804,10 @@ class HTNCampaignPlanner:
             max_hp = max(1, sum(int(mon["maxHP"]) for mon in party_summary))
             healing_directive = self._healing_directive(bridge, hp, max_hp, completed)
             healing_directive["reason"] = healing_reason
-            return healing_directive
+            # No walkable way out (one-way puzzle rooms): carry on; a lost
+            # battle there returns the party to a center anyway.
+            if healing_directive.get("trip_validated") is not False:
+                return healing_directive
         shop = self.shopping_directive(bridge, party_summary, completed)
         if shop is not None:
             return shop
@@ -764,7 +827,8 @@ class HTNCampaignPlanner:
             # hand-written campaign hint once a defeat has taught them.
             required_types = self.learned_counters.get(task.milestone_id) or task.required_types
             readiness = self.preparation.assess(task.milestone_id, task.required_avg_level,
-                                               party_summary, required_types, metadata)
+                                               party_summary, required_types, metadata,
+                                               self.boss_levels.get(task.milestone_id, 0))
             if party_summary and not readiness.ready:
                 training = self._training_directive(bridge, replace(task, required_avg_level=readiness.target_level),
                                                      completed, party_summary)
@@ -787,13 +851,10 @@ class HTNCampaignPlanner:
                 elif self._restoring_for != task.milestone_id and not self._near(bridge, task.map_key, completed):
                     engage = None
                 if engage is not None:
-                    self._restoring_for = task.milestone_id
-                    hp = sum(int(mon["hp"]) for mon in party_summary)
-                    max_hp = max(1, sum(int(mon["maxHP"]) for mon in party_summary))
-                    restore = self._healing_directive(bridge, hp, max_hp, completed)
-                    if "dest" in restore:
-                        restore.update(reason=engage, pre_battle=task.milestone_id, milestone=task.milestone_id)
+                    restore = self._pre_battle_restore(bridge, task.milestone_id, party_summary, engage, completed)
+                    if restore is not None:
                         return restore
+                    readiness = replace(readiness, reason=self.last_engage_note)
             result: dict[str, Any] = {"mode": "EXECUTE_MILESTONE", "milestone": task.milestone_id,
                     "dest": (*task.map_key, task.target_coords), "action": task.action, "script": task.script,
                     "npc_local_id": task.npc_local_id, "map_name": task.map_name, "puzzle": task.puzzle,

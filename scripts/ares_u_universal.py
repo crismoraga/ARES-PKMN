@@ -71,6 +71,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         f"sequence={args.sequence} t={time.strftime('%Y-%m-%d %H:%M:%S')}")
     agent = UniversalAgent(adapter, kb, run_id=run_id, run_dir=run_dir, sequence=args.sequence,
                            publish=not args.no_publish, seed=args.seed, use_brain=not args.no_brain, log=log)
+    memory = start.with_suffix(".mem")
+    if memory.exists() and not args.fresh_memory:
+        agent.load_memory(memory)  # resume as the same agent: map graph, heal spots, pending quests
     report = agent.run(max_frames=args.frames, max_seconds=args.seconds)
     log(f"=== end frames={report['frames']} milestones={list(report['milestones'])}")
     print(json.dumps({"milestones": {k: v["frame"] for k, v in report["milestones"].items()},
@@ -96,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--no-publish", action="store_true")
     run.add_argument("--no-brain", action="store_true", help="use the built-in type-chart policy only")
     run.add_argument("--verbose", action="store_true")
+    run.add_argument("--fresh-memory", action="store_true", help="ignore <start>.mem (agent memory) next to the state")
     run.set_defaults(func=cmd_run)
     args = parser.parse_args(argv)
     result: Any = args.func(args)

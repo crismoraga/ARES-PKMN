@@ -63,6 +63,8 @@ class MapMemory:
     blocked: dict[Cell, int] = field(default_factory=dict)     # cell -> tick until which it is avoided
     arrivals: dict[str, Cell] = field(default_factory=dict)    # how we entered -> where we stood
     crossings: dict[str, set[Cell]] = field(default_factory=dict)  # edge direction -> cells that crossed
+    counter_npcs: set[int] = field(default_factory=set)        # npcs served across a counter (clerk, nurse)
+    heal_probed: dict[int, int] = field(default_factory=dict)  # npc -> tick of the last 'can you heal?' talk
 
     def to_json(self) -> dict[str, Any]:
         return {"name": self.name, "visits": self.visits, "visited": len(self.visited),

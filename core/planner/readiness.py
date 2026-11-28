@@ -48,6 +48,12 @@ FAR_TRIP_HP_FRACTION = 0.5
 FAR_TRIP_HP_WITH_ITEMS = 0.35
 FAR_TRIP_ITEM_HP = 40
 MAX_RESTORES_PER_ATTEMPT = 3
+# Caves count by floors, not tiles: Mt. Moon B2F is ~60 tiles from the Route 4
+# center but three wild-encounter floors away. Two or more underground maps on
+# the way make the trip "far" whatever its tile estimate.
+FAR_RESTORE_CAVE_MAPS = 2
+# Levels above the boss's strongest observed member that defeats may demand.
+RETRY_LEVEL_MARGIN = 5
 
 
 def best_attack_pp(mon: Mapping[str, Any], move_info: Callable[[int], tuple[int, int, int]],
@@ -123,11 +129,16 @@ class CampaignPreparationPolicy:
         healthy = [mon for mon in party if int(mon["hp"]) > 0 and not mon.get("is_egg", False)]
         if not healthy:
             return None
+        # Hysteresis: one trip already showed what the walk back costs; another
+        # one would arrive in the same shape, so later trips need a real deficit.
+        restored = record is not None and record.restores > 0
+        hp_floor = FAR_TRIP_HP_FRACTION if restored else ENGAGE_HP_FRACTION
+        pp_floor = LOW_PP_FRACTION if restored else ENGAGE_PP_FRACTION
         lead = max(healthy, key=lambda mon: (int(mon["level"]), int(mon["maxHP"])))
-        if int(lead["hp"]) / max(1, int(lead["maxHP"])) < ENGAGE_HP_FRACTION:
+        if int(lead["hp"]) / max(1, int(lead["maxHP"])) < hp_floor:
             return f"Restore HP before {objective}: strongest member at {lead['hp']}/{lead['maxHP']}"
         fraction, attacks = best_attack_pp(lead, move_info, species_types(int(lead["species"])))
-        if attacks and fraction < ENGAGE_PP_FRACTION:
+        if attacks and fraction < pp_floor:
             return f"Restore PP before {objective}: best attacks at {round(100 * fraction)}%"
         fainted = [mon for mon in party if int(mon["hp"]) <= 0 and not mon.get("is_egg", False)]
         if fainted and len(party) > 1:
@@ -163,7 +174,14 @@ class CampaignPreparationPolicy:
                 + (f" and {healing_hp} HP of healing items" if items else ""))
 
     def assess(self, objective: str, recommended: int, party: Sequence[Mapping[str, Any]],
-               required_types: Sequence[int], move_metadata: Callable[[int], tuple[int, int]]) -> BattleReadiness:
+               required_types: Sequence[int], move_metadata: Callable[[int], tuple[int, int]],
+               roster_level: int = 0) -> BattleReadiness:
+        """``roster_level``: highest level seen in the objective's own roster (0 = unknown).
+
+        Defeat escalation is capped at ``roster_level + RETRY_LEVEL_MARGIN``: past
+        that, more levels are not what is missing (17 losses to a L18 rival once
+        asked for L30 and stranded the campaign grinding L6 wilds).
+        """
         if recommended <= 0:
             return BattleReadiness(True, 0, "Story interaction; no level grinding", 0, False)
         record = self.records.setdefault(objective, PreparationRecord(self.frame, self.wins))
@@ -182,7 +200,10 @@ class CampaignPreparationPolicy:
                 offense = True
                 advantage |= move_type in required_types and int(pp) >= 3
         level = int(lead["level"])
-        target = max(5, math.ceil(recommended * (0.65 if advantage else 0.85)), record.retry_level)
+        retry = record.retry_level
+        if roster_level > 0:
+            retry = min(retry, roster_level + RETRY_LEVEL_MARGIN)
+        target = max(5, math.ceil(recommended * (0.65 if advantage else 0.85)), retry)
         ready = offense and level >= target
         if not ready and exhausted and advantage and not record.retry_level:
             ready = level >= max(5, math.ceil(recommended * 0.5))

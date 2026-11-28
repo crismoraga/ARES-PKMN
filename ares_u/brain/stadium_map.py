@@ -114,7 +114,7 @@ class PolicyMapper:
         species = tuple(sorted((SpeciesData(index, str(spec[0]), spec[1], spec[2], (0, 0))  # type: ignore[arg-type]
                                 for spec, index in current.extra_species.items()), key=lambda row: row.species_id))
         moves = tuple(sorted((MoveData(index, str(spec[0]), 0, int(spec[1]), int(spec[2]), int(spec[3]),  # type: ignore[call-overload]
-                                       int(spec[4]), 0, 0, int(spec[5]), 0)
+                                       int(spec[4]), 0, 0, int(spec[5]), 0)  # type: ignore[call-overload]
                               for spec, index in current.extra_moves.items()), key=lambda row: row.move_id))
         current.dex = self._variant(key, species, moves)
 

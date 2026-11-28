@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import pickle
 import random
 import time
 import unicodedata
@@ -36,6 +37,12 @@ from .world import PASSABLE, Cell, Target, World, bfs, edge_cells, first_step, i
 
 STRONG = {"event": 1.0, "new_map": 1.0, "party": 3.0, "item": 2.0, "badge": 10.0, "win": 0.5, "level": 0.3,
           "heal": 0.2}
+PINGPONG_HOPS = 6        # map transitions inspected by the cycle detector
+PINGPONG_TICKS = 500     # ...when they all happened within this many ticks
+PLAN_TICKS = 2500        # a multi-map trip is abandoned after this many ticks
+BACKTRACK_TICKS = 400    # right after entering a map, going straight back...
+BACKTRACK_FACTOR = 0.25  # ...is discounted (border oscillation)
+PLAN_BONUS = 3.0         # score multiplier of the trip's destination in intermediate maps
 DEFAULT_STARTER_PREFERENCE = ["water", "grass", "fire"]
 
 
@@ -102,6 +109,12 @@ class UniversalAgent:
         self.train_level = 0
         self.heal_spots: list[dict[str, Any]] = []
         self.return_mode: dict[str, Any] | None = None
+        self.unresolved_quest: list[int] | None = None
+        self.fail_count: dict[tuple[Any, ...], int] = {}
+        self.plan: dict[str, Any] | None = None
+        self.came_from: tuple[MapKey, int] | None = None   # destination of the multi-map trip in progress
+        self.transitions: deque[tuple[int, tuple[Any, ...], MapKey, MapKey, int]] = deque(maxlen=32)
+        self.stuck_events: list[dict[str, Any]] = []
         self.completed: tuple[str, int] | None = None   # (target kind, tick) awaiting its return
         self.stuck_level = 0
         self.stuck_open: dict[str, Any] | None = None
@@ -164,6 +177,7 @@ class UniversalAgent:
             self.ad.wait(1)  # every tick consumes at least one frame (no busy loops)
 
     def _step(self) -> None:
+        self.ad.ensure_settled()  # never reason about a map whose data is still being loaded
         snap = self.ad.snapshot()
         self.observe(snap)
         if snap.mode == "battle":
@@ -287,14 +301,28 @@ class UniversalAgent:
             (px, py), direction = walk[1], walk[2]
             dx, dy = DELTAS[direction]
             nx, ny = px + dx, py + dy
+            transition: tuple[Any, ...] | None = None
             if not (0 <= nx < old_info.width and 0 <= ny < old_info.height) and direction in old_info.connections:
                 self.world.record_connection(prev.map, direction, snap.map, (snap.x, snap.y), (px, py))
+                transition = ("conn", prev.map, direction)
             else:
                 cell = (nx, ny) if (nx, ny) in old_info.warps else (px, py)
                 if cell in old_info.warps:
                     self.world.record_warp(prev.map, cell, snap.map, (snap.x, snap.y))
                     self.stats["warps"] += 1
+                    transition = ("warp", prev.map, cell)
+            if transition is not None:
+                self.note_transition(transition, prev.map, snap.map)
         self.stats["maps"] = len(self.world.visited_maps)
+        # Travel plan: a multi-map trip keeps its destination across intermediate maps (hysteresis),
+        # otherwise every map re-decides from scratch and the agent oscillates on the border.
+        locked = self.plan is not None and self.plan.get("locked", False)
+        if self.target is not None and self.target.kind == "route" and self.target.key[1] != snap.map and not locked:
+            if self.plan is None or self.plan["dest"] != self.target.key[1]:
+                self.plan = {"dest": self.target.key[1], "since": self.tick}
+        if self.plan is not None and (self.plan["dest"] == snap.map or self.tick - self.plan["since"] > PLAN_TICKS):
+            self.plan = None
+        self.came_from = (prev.map, self.tick)
         self.target = None
         self.settle_until = self.tick + 3
         self.ad.invalidate()
@@ -303,6 +331,25 @@ class UniversalAgent:
             self.gain("new_map", 1, snap, f"Nuevo mapa: {name}")
         else:
             self.log(f"Entra a {name}")
+
+    def note_transition(self, transition: tuple[Any, ...], src: MapKey, dest: MapKey) -> None:
+        """Map-level cycle detection: A->B->A->B... with no progress means both exits are a trap."""
+        self.transitions.append((self.tick, transition, src, dest, self.progress_events))
+        recent = list(self.transitions)[-PINGPONG_HOPS:]
+        if len(recent) < PINGPONG_HOPS or recent[-1][0] - recent[0][0] > PINGPONG_TICKS:
+            return
+        pair = {recent[-1][2], recent[-1][3]}
+        if any({r[2], r[3]} != pair for r in recent) or recent[0][4] != self.progress_events:
+            return
+        names = " <-> ".join(self.ad.map_name(k) for k in sorted(pair))
+        self.stats["pingpong"] = self.stats.get("pingpong", 0) + 1
+        self.log(f"Ciclo entre mapas detectado ({names}): salidas usadas a la lista tabu")
+        for _, used, _, to, _ in recent:
+            self.set_tabu(used, 4000)
+            self.set_tabu(("route", to), 2500)
+        self.transitions.clear()
+        self.plan = None
+        self.stuck_events.append({"kind": "pingpong", "frame": self.ad.frame_count, "maps": sorted(pair)})
 
     def on_heal(self, prev: Snapshot, snap: Snapshot) -> None:
         via = "other"
@@ -347,17 +394,21 @@ class UniversalAgent:
         self.return_mode = {"since": self.tick, "items": items, "map": snap.map,
                             "targets": [k for _, k in story_maps[:2]]}
         names = ", ".join(self.ad.map_name(k) for _, k in story_maps[:2])
-        belief = (stats["success"] + 0.0) / (stats["tries"] + 1.0)
+        belief = self.return_belief()
+        self.plan = {"dest": story_maps[0][1], "since": self.tick, "locked": True}
         self.log(f"Patron 'volver al lugar de la historia' activado ({names}; creencia {belief:.2f})")
 
     def finish_return_mode(self, success: bool, snap: Snapshot) -> None:
         if self.return_mode is None:
             return
+        if self.plan is not None and self.plan.get("locked"):
+            self.plan = None
         stats = self.kb.skills.setdefault("story_return", {"tries": 0, "success": 0})
         stats["tries"] += 1
         if success:
             stats["success"] += 1
         self.log(f"Patron 'volver' {'confirmado' if success else 'fallido'} ({stats['success']}/{stats['tries']})")
+        self.unresolved_quest = None if success else list(self.return_mode["items"])
         self.return_mode = None
 
     def return_boost(self, key: MapKey) -> float:
@@ -369,8 +420,16 @@ class UniversalAgent:
         if key not in self.return_mode["targets"]:
             return 1.0
         stats = self.kb.skills.get("story_return", {"tries": 0, "success": 0})
-        belief = stats["success"] / (stats["tries"] + 1.0)
-        return 1.0 + 6.0 * belief
+        del stats
+        return 1.0 + 8.0 * self.return_belief()
+
+    def return_belief(self) -> float:
+        """Beta(1,1)-smoothed success rate of the 'go back where the story was' pattern.
+
+        Optimistic on a cold start (0.5) so a first quest item is actually brought back; it drops
+        if returning keeps failing and rises (and transfers to the next game) when it works."""
+        stats = self.kb.skills.get("story_return", {"tries": 0, "success": 0})
+        return float(stats["success"] + 1.0) / float(stats["tries"] + 2.0)
 
     # ================================================================== text / menus / naming
     def text_tick(self, snap: Snapshot) -> None:
@@ -561,10 +620,12 @@ class UniversalAgent:
             self.stats["blackouts"] += 1
             self.flags.add("blackout_pending")
             levels = battle["enemy_levels"] or {5}
-            if battle["kind"] == "trainer":
-                self.train_level = max(self.train_level, max(levels) + 2)
-            else:
-                self.train_level = max(self.train_level, max(levels) + 1)
+            own = max((m.level for m in prev.party), default=1)
+            want = max(levels) + (2 if battle["kind"] == "trainer" else 1)
+            want = min(want, own + 3)  # misread/stale levels must not send it grinding forever
+            if own >= max(levels) + 2:
+                want = 0  # out-levelled the enemy: the team was simply not healed
+            self.train_level = max(self.train_level, want)
             self.log(f"Derrota contra {battle['enemies']}: entrenar hasta nv{self.train_level}")
         elif battle.get("caught"):
             self.stats["caught"] += 1
@@ -578,6 +639,7 @@ class UniversalAgent:
                 self.flags.add("first_battle_won")
             if battle["kind"] == "trainer":
                 self.flags.add("trainer_won")
+                self.flags.add(f"trainer_won@{snap.map[0]}.{snap.map[1]}")
             self.gain("win", 1, snap, f"Combate ganado ({battle['kind']}) contra {battle['enemies']}")
         self.turn_choice = None
 
@@ -976,6 +1038,9 @@ class UniversalAgent:
         goals: set[Cell] = set()
         for target in targets:
             goals.update(target.goals)
+        # Every warp may be the first hop of a remote route, including the ones already used: a path
+        # must be allowed to end on them (BFS never crosses warp cells otherwise).
+        goals.update((w.x, w.y) for w in info.warps if info.inside(w.x, w.y))
         dist, parent = bfs(info, cell, blocked, goals)
         best: Target | None = None
         best_goal: Cell | None = None
@@ -1024,6 +1089,8 @@ class UniversalAgent:
         kind = target.kind
         if kind == "heal":
             return f"Curar al equipo en {info.name}"
+        if kind == "heal_probe":
+            return f"Pedir curacion al personaje del mostrador ({info.name})"
         if kind == "route":
             return target.label
         if kind == "new_map":
@@ -1046,9 +1113,23 @@ class UniversalAgent:
         kb = self.kb
         memory = self.world.mem(info.key)
         out: list[Target] = []
-        heal_mode = self.need_heal(snap) and bool(self.heal_spots)
-        train = self.training(snap) and not heal_mode
+        hurt = self.need_heal(snap)
+        heal_mode = hurt and bool(self.heal_spots)
+        probe = hurt and not self.heal_spots  # no known healer: ask the ones behind a counter
+        errand = self.return_mode is not None and info.key not in self.return_mode["targets"]
+        train = self.training(snap) and not heal_mode and not probe
         boost = self.return_boost(info.key)
+        if probe:
+            for npc in npcs:
+                if npc.index not in memory.counter_npcs:
+                    continue
+                if self.tick - memory.heal_probed.get(npc.index, -10**9) < 1500:
+                    continue
+                stands = {c: d for c, d in interaction_cells(info, npc.x, npc.y).items()
+                          if abs(c[0] - npc.x) + abs(c[1] - npc.y) == 2}
+                if stands:
+                    out.append(Target(key=("heal_probe", info.key, npc.index), kind="heal_probe", value=4.0,
+                                      goals=dict(stands), interact=True, npc=npc.index))
         for (wx, wy), dest in memory.warps.items():
             used = (wx, wy) in memory.warps_used
             if used:
@@ -1056,7 +1137,8 @@ class UniversalAgent:
             unvisited = dest is None or self.world.mem(dest).visits == 0
             kind = "new_map" if unvisited else "exit"
             value = kb.target_value("new_map") if unvisited else 0.08
-            out.append(Target(key=("warp", info.key, (wx, wy)), kind=kind, value=value * (0.3 if heal_mode else 1),
+            out.append(Target(key=("warp", info.key, (wx, wy)), kind=kind,
+                              value=value * (0.3 if heal_mode or errand else 1),
                               goals={(wx, wy): None}))
         for direction, dest in memory.connections.items():
             if direction in memory.connections_used:
@@ -1067,7 +1149,7 @@ class UniversalAgent:
                 continue
             value = kb.target_value("new_map") if unvisited else 0.08
             out.append(Target(key=("conn", info.key, direction), kind="new_map" if unvisited else "exit",
-                              value=value * (0.3 if heal_mode else 1),
+                              value=value * (0.3 if heal_mode or errand else 1),
                               goals={c: direction for c in cells}))  # type: ignore[misc]
         for npc in npcs:
             stands = interaction_cells(info, npc.x, npc.y)
@@ -1075,11 +1157,12 @@ class UniversalAgent:
                 continue
             last = memory.talked.get(npc.index)
             if npc.is_item:
-                if last is not None:
+                # A ball still on screen after the story moved on may have become choosable (starters).
+                if last is not None and self.progress_events <= last:
                     continue
-                kind, value = "item", kb.target_value("item")
+                kind, value = "item", kb.target_value("item") * (1.0 if last is None else boost)
             elif last is None:
-                kind, value = "npc", kb.target_value("npc")
+                kind, value = "npc", kb.target_value("npc") * boost
             elif self.progress_events > last:
                 importance = 1.0 + min(3.0, memory.talk_gain.get(npc.index, 0.0)) + min(2.0, 0.2 * memory.story)
                 kind, value = "retalk", kb.target_value("retalk") * importance * boost
@@ -1089,13 +1172,13 @@ class UniversalAgent:
                 if heal_mode and spot["map"] == info.key and spot.get("npc") == npc.index:
                     kind, value = "heal", 5.0
             out.append(Target(key=(kind if kind != "heal" else "npc", info.key, npc.index), kind=kind,
-                              value=value * (0.2 if heal_mode and kind != "heal" else 1.0),
+                              value=value * (0.2 if heal_mode and kind != "heal" else 0.3 if errand else 1.0),
                               goals=dict(stands), interact=True, npc=npc.index))
         if heal_mode:
             for spot in self.heal_spots:
                 if spot["map"] == info.key and spot.get("npc") is None:
                     out.append(Target(key=("heal", info.key, spot["cell"]), kind="heal", value=5.0,
-                                      goals={tuple(spot["cell"]): spot["dir"]}, interact=True))  # type: ignore[dict-item]
+                                      goals={tuple(spot["cell"]): spot["dir"]}, interact=True))
         for sx, sy in memory.signs:
             if (sx, sy) in memory.signs_read:
                 continue
@@ -1112,23 +1195,27 @@ class UniversalAgent:
             if len(unvisited_cells) > 600:
                 unvisited_cells = self.rng.sample(unvisited_cells, 600)
             out.append(Target(key=("coverage", info.key), kind="coverage",
-                              value=kb.target_value("coverage") * (0.3 if heal_mode else 1.0),
+                              value=kb.target_value("coverage") * (0.3 if heal_mode or errand else 1.0),
                               goals={c: None for c in unvisited_cells}))
         return out
 
-    def map_pending_value(self, key: MapKey, heal_mode: bool, train: bool) -> float:
+    def map_pending_value(self, key: MapKey, heal_mode: bool, train: bool, probe: bool = False) -> float:
         memory = self.world.maps.get(key)
         kb = self.kb
         if memory is None or memory.visits == 0:
             return kb.target_value("new_map") * (0.3 if heal_mode else 1.0)
         if heal_mode:
             return 5.0 if any(s["map"] == key for s in self.heal_spots) else 0.0
+        if probe:
+            if any(self.tick - memory.heal_probed.get(i, -10**9) >= 1500 for i in memory.counter_npcs):
+                return 4.0
+            return 0.0
         best = 0.0
         for index, (_, _, _, is_item) in memory.npcs.items():
             if self.is_tabu(("npc", key, index)) or self.is_tabu(("item", key, index)):
                 continue
             last = memory.talked.get(index)
-            if last is None:
+            if last is None or (is_item and self.progress_events > last):
                 best = max(best, kb.target_value("item" if is_item else "npc"))
             elif self.progress_events > last and not is_item and not self.is_tabu(("retalk", key, index)):
                 importance = 1.0 + min(3.0, memory.talk_gain.get(index, 0.0)) + min(2.0, 0.2 * memory.story)
@@ -1146,15 +1233,17 @@ class UniversalAgent:
     def remote_target(self, snap: Snapshot, info: MapInfo, dist: dict[Cell, int]
                       ) -> tuple[float, Target, Cell] | None:
         routes = self.world.route(info.key)
-        heal_mode = self.need_heal(snap) and bool(self.heal_spots)
-        train = self.train_level > 0
+        hurt = self.need_heal(snap)
+        heal_mode = hurt and bool(self.heal_spots)
+        probe = hurt and not self.heal_spots and any(m.counter_npcs for m in self.world.maps.values())
+        train = self.train_level > 0 and not probe
         best: tuple[float, Target, Cell] | None = None
         for key, (cost, via) in routes.items():
             if key == info.key or via is None or self.is_tabu(("route", key)):
                 continue
             if self.is_tabu(("warp", info.key, via[1]) if via[0] == "warp" else ("conn", info.key, via[1])):
                 continue
-            value = self.map_pending_value(key, heal_mode, train)
+            value = self.map_pending_value(key, heal_mode, train, probe)
             if value <= 0:
                 continue
             kind, data = via
@@ -1167,10 +1256,17 @@ class UniversalAgent:
                 continue
             d, goal = min(reach)
             score = 0.6 * value / (1.0 + (d + cost) / 30.0)  # finish the local frontier first
+            if self.return_mode is not None and key in self.return_mode["targets"]:
+                score *= self.return_boost(key)  # a quest item is waiting to be delivered there
+            if self.plan is not None and key == self.plan["dest"]:
+                score *= PLAN_BONUS  # keep going where we were already heading
+            if (self.came_from is not None and key == self.came_from[0] and self.tick - self.came_from[1] < BACKTRACK_TICKS
+                    and not heal_mode and not (self.return_mode is not None and key in self.return_mode["targets"])):
+                score *= BACKTRACK_FACTOR  # we just left that map for a reason: finish this one first
             if best is None or score > best[0]:
                 target = Target(key=("route", key), kind="route", value=value, goals=goals,
                                 label=f"Viajar a {self.ad.map_name(key)}"
-                                + (" para curar" if heal_mode else ""),
+                                + (" para curar" if heal_mode else " para buscar quien cure" if probe else ""),
                                 via=("warp", info.key, data) if kind == "warp" else ("conn", info.key, data))
                 best = (score, target, goal)
         return best
@@ -1186,6 +1282,11 @@ class UniversalAgent:
             if target.kind == "sign":
                 memory.signs_read.add(target.key[2])
             elif target.npc is not None:
+                npc_pos = memory.npcs.get(target.npc)
+                if npc_pos is not None and abs(goal[0] - npc_pos[0]) + abs(goal[1] - npc_pos[1]) == 2:
+                    memory.counter_npcs.add(target.npc)
+                if target.kind == "heal_probe":
+                    memory.heal_probed[target.npc] = self.tick
                 if opened:
                     memory.talked[target.npc] = self.progress_events
                 else:
@@ -1211,8 +1312,10 @@ class UniversalAgent:
         self.push_tries[tkey] = tries + 1
         limit = 14 if direction is not None else 6
         if tries >= limit:
-            self.log(f"No se pudo usar {target.describe()}: tabu")
-            self.set_tabu(tkey, 3000)
+            fails = self.fail_count.get(tkey, 0) + 1
+            self.fail_count[tkey] = fails
+            self.log(f"No se pudo usar {target.describe()}: tabu (fallo {fails})")
+            self.set_tabu(tkey, 3000 * 2 ** min(fails - 1, 6))  # a dead end stays dead longer each time
             self.set_tabu(target.key, 1500)
             self.push_tries.pop(tkey, None)
             self.target = None
@@ -1286,6 +1389,16 @@ class UniversalAgent:
             for key in list(self.world.mem(info.key).talked):
                 self.world.mem(info.key).talked[key] = -1  # allow re-talking everyone here
             return True
+        if self.unresolved_quest and self.return_mode is None and snap.bag:
+            held = {item for item, _ in snap.bag}
+            items = [i for i in self.unresolved_quest if i in held]
+            self.unresolved_quest = None
+            if items:  # the quest item is still unused: the delivery is the most likely way forward
+                self.log("Atasco nivel 3: reintentar la entrega del objeto de mision")
+                self.start_return_mode(snap, items)
+                self.progress_tick = self.weak_tick = self.tick
+                self.stuck_level = 0
+                return True
         self.log("Atasco nivel 3: recargar el ultimo estado bueno")
         if self.target is not None:
             self.set_tabu(self.target.key, 6000)
@@ -1302,15 +1415,37 @@ class UniversalAgent:
         self.progress_tick = self.weak_tick = self.tick
         self.stuck_level = 0
         self.target = None
+        self.plan = None
         self.prev = None
         return True
 
     # ================================================================== persistence / reporting
+    MEMORY_FIELDS = ("world", "tick", "heal_spots", "milestones", "flags", "return_mode", "unresolved_quest",
+                     "stats", "timeline", "progress", "progress_events", "train_level", "stuck_log",
+                     "stuck_events", "tabu", "fail_count")
+
     def save_state_file(self, name: str) -> None:
+        """Savestate plus the agent's memory (map graph, heal spots, quests) so a run can resume as itself."""
         try:
             (self.run_dir / f"{name}.state").write_bytes(self.ad.save_state())
-        except OSError:
+            memory = {f: getattr(self, f) for f in self.MEMORY_FIELDS if hasattr(self, f)}
+            (self.run_dir / f"{name}.mem").write_bytes(pickle.dumps(memory))
+        except (OSError, pickle.PicklingError, TypeError):
             pass
+
+    def load_memory(self, path: Path) -> bool:
+        """Restore what :meth:`save_state_file` wrote next to a savestate (``<name>.mem``)."""
+        try:
+            memory = pickle.loads(path.read_bytes())
+        except (OSError, pickle.UnpicklingError, EOFError, AttributeError):
+            return False
+        for name, value in memory.items():
+            if name in self.MEMORY_FIELDS:
+                setattr(self, name, value)
+        self.world.tick = self.tick
+        self.progress_tick = self.weak_tick = self.tick
+        self.log(f"Memoria restaurada: {len(self.world.visited_maps)} mapas, {len(self.milestones)} hitos")
+        return True
 
     def checkpoint(self) -> None:
         self.kb.games.setdefault(self.ad.key, {})
@@ -1329,6 +1464,8 @@ class UniversalAgent:
                 "stats": self.stats, "maps_visited": len(self.world.visited_maps),
                 "maps": {self.ad.map_name(k): m.to_json() for k, m in self.world.maps.items() if m.visits},
                 "stuck_episodes": self.stuck_log[-50:], "open_stuck": self.stuck_open,
+                "cycle_events": self.stuck_events[-50:],
+                "map_settle": {"waits": self.ad.settle_waits, "timeouts": self.ad.settle_timeouts},
                 "heal_spots": [{"map": self.ad.map_name(s["map"]), "cell": s["cell"]} for s in self.heal_spots],
                 "inherited": self.inherited, "knowledge": self.kb.summary(), "brain": self.brain_name,
                 "train_level": self.train_level, "timeline": self.timeline}

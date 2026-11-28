@@ -40,7 +40,7 @@ DEFAULT_SEED = 4  # best mean score vs Greedy+prior on the validation split gen1
 DEFAULT_CHECKPOINT = E1_DIR / f"seed{DEFAULT_SEED}" / "final.pt"
 LEAGUE_DIR = ROOT / "artifacts" / "ares_u" / "league"
 MODES = ("brain", "policy", "strategy")
-STRATEGY_WEIGHT = 4.0
+STRATEGY_WEIGHT = 2.0  # tuned on gen1_train only (artifacts/brain/eval/tuning.json)
 UNSEEN_LOGP = math.log(0.05)
 
 

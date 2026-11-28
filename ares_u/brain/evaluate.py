@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from ares_u.battle.paired import bootstrap_mean_ci, holm, sign_flip_p
 from ares_u.battle.rollout import WorkerPool
@@ -108,7 +109,7 @@ def run(args: argparse.Namespace) -> Path:
     return out
 
 
-def pairs(scores: list[float]) -> np.ndarray:
+def pairs(scores: list[float]) -> NDArray[np.float64]:
     values = np.asarray(scores, dtype=np.float64)
     usable = values.size - values.size % 2
     return np.asarray(values[:usable].reshape(-1, 2).mean(axis=1), dtype=np.float64)
@@ -204,8 +205,36 @@ def report(args: argparse.Namespace) -> Path:
     summary = summarize(data)
     (OUT / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     path = OUT / "report.md"
-    path.write_text(markdown(summary), encoding="utf-8")
-    return path
+    text = markdown(summary)
+    path.write_text(text, encoding="utf-8")
+    tuning = summarize(read(OUT / "tuning.json"))
+    games = {path.stem.split("_")[0]: json.loads(path.read_text(encoding="utf-8"))
+             for path in sorted((OUT.parent / "game_check").glob("*_summary.json"))}
+    full = {"default_mode": "learned", "strategy_weight": STRATEGY_WEIGHT, "checkpoint": str(DEFAULT_CHECKPOINT),
+            "test": summary, "tuning_gen1_train": tuning["cells"], "game_check": games}
+    (OUT.parent / "report.json").write_text(json.dumps(full, indent=1), encoding="utf-8")
+    extra = ["", "## Tuning (validation split gen1_train only)", "",
+             "| agent | opponent | score | 95% CI | battles |", "|---|---|---|---|---|"]
+    for cell in sorted(tuning["cells"].values(), key=lambda item: (item["opponent"], item["agent"])):
+        extra.append(f"| {cell['agent']} | {cell['opponent']} | {cell['score']:.4f} | "
+                     f"[{cell['ci'][0]:.3f}, {cell['ci'][1]:.3f}] | {cell['battles']} |")
+    extra += ["", f"Chosen strategy weight: {STRATEGY_WEIGHT:g} (best mean over greedy+prior on gen1_train)."]
+    for game, table in games.items():
+        extra += ["", f"## Real cartridge check: {game} (same checkpoint, ARES_BATTLE_BRAIN learned vs heuristic)", "",
+                  "| mode | frames | battles | trainer | won | lost | caught | faints | HP lost/battle | "
+                  "HP lost frac | trainer HP lost frac | brain decisions | fallbacks |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+        for mode, row in table.items():
+            extra.append(f"| {mode} | {row['frames']} | {row['battles']} | {row['trainer_battles']} | {row['won']} | "
+                         f"{row['lost']} | {row['caught']} | {row['faints']} | {row['hp_lost_mean']} | "
+                         f"{row['hp_lost_frac_mean']} | {row['trainer_hp_lost_frac_mean']} | "
+                         f"{row['learned_decisions']}/{row['decisions']} | {row['fallbacks']} |")
+    notes = OUT.parent / "conclusions.md"  # hand-written reading of the numbers above
+    if notes.is_file():
+        extra += ["", notes.read_text(encoding="utf-8").rstrip()]
+    extra.append("")
+    (OUT.parent / "report.md").write_text(text + chr(10).join(extra), encoding="utf-8")
+    return OUT.parent / "report.md"
 
 
 def tune(args: argparse.Namespace) -> Path:

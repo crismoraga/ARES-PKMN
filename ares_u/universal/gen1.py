@@ -33,7 +33,7 @@ from numpy.typing import NDArray
 from ares_u.gal.games import GameSpec
 
 from .adapter import TILE_SPACE, GameAdapter, GBScreenParser, base_charmap
-from .model import (COUNTER, FLOOR, GRASS, LEDGE_DOWN, LEDGE_LEFT, LEDGE_RIGHT, WALL, WARP_CELL, BattleInfo,
+from .model import (Mode, COUNTER, FLOOR, GRASS, LEDGE_DOWN, LEDGE_LEFT, LEDGE_RIGHT, WALL, WARP_CELL, BattleInfo,
                     Connection, Direction, MapInfo, MapKey, MonInfo, MoveInfo, Npc, ScreenInfo, Snapshot, Warp)
 from .typechart import GB_TYPE_IDS
 
@@ -155,7 +155,7 @@ class Gen1Adapter(GameAdapter):
         self.parser = GBScreenParser(charmap)
         self._load_rom_tables()
         self._map_cache: MapInfo | None = None
-        self._map_cache_key: tuple[int, ...] = ()
+        self._map_cache_key: tuple[Any, ...] = ()
 
     # ------------------------------------------------------------------ ROM data
     def _load_rom_tables(self) -> None:
@@ -356,6 +356,8 @@ class Gen1Adapter(GameAdapter):
             out.append("starter")
         if "first_battle_won" in flags:
             out.append("first_battle_won")
+        if "trainer_won@0.40" in flags:
+            out.append("rival_lab_beaten")
         if (0, 0x0C) in visited:
             out.append("left_pallet")
         if (0, 0x01) in visited:
@@ -410,7 +412,14 @@ class Gen1Adapter(GameAdapter):
         return letters >= 20
 
     # ------------------------------------------------------------------ map
+    def map_signature(self) -> bytes:
+        # Header from the tileset byte on (no coordinates), the first warps and the block map.
+        # (Pointers after the size bytes are rewritten earlier than the rest: they must stay out.)
+        return (self.read(self.addr("wCurMapTileset"), 3) + self.read(self.addr("wCurMapConnections"), 1)
+                + self.read(self.addr("wNumberOfWarps"), 33) + self.read(SYM["wOverworldMap"], 0x200))
+
     def map_info(self) -> MapInfo:
+        self.ensure_settled()
         header = self.read(self.addr("wCurMap"), 0x10)
         warps = self.read(self.addr("wNumberOfWarps"), 1 + 4 * 32)
         cache_key = (header[0], header[9], header[10], header[11], warps[:1 + 4 * min(warps[0], 32)])
@@ -449,8 +458,11 @@ class Gen1Adapter(GameAdapter):
         warps = []
         count = self.ram8("wNumberOfWarps")
         raw = self.ram("wWarpEntries", 4 * min(count, 32))
+        last_map = self.ram8("wLastMap")  # warp destination 0xFF = "the map we came from" (house/shop exits)
         for index in range(min(count, 32)):
             y, x, dest_index, dest_map = raw[4 * index: 4 * index + 4]
+            if dest_map == 0xFF:
+                dest_map = last_map
             warps.append(Warp(x=x, y=y, dest_map=None if dest_map == 0xFF else (0, dest_map), dest_index=dest_index))
             if 0 <= x < width and 0 <= y < height:
                 grid[y, x] = WARP_CELL
@@ -515,6 +527,7 @@ class Gen1Adapter(GameAdapter):
         key, x, y = self.position()
         screen = self.screen()
         battle = self.battle()
+        mode: Mode
         if battle is not None:
             mode = "battle"
         elif screen.naming:
