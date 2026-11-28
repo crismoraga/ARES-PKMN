@@ -26,12 +26,13 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from ares_u.gal.backends import (GBA_A, GBA_B, GBA_DOWN, GBA_LEFT, GBA_RIGHT, GBA_START, GBA_UP, DeSmuMEBridge,
+from ares_u.gal.backends import (nds_backend, GBA_A, GBA_B, GBA_DOWN, GBA_LEFT, GBA_RIGHT, GBA_START, GBA_UP, DeSmuMEBridge,
                                  MGBAMultiBridge, make_bridge)
+from ares_u.gal.melonds import MelonDSBridge
 from ares_u.gal.games import GAL_ARTIFACTS, GAMES, CoordSpec, Field, GameSpec, game
 from ares_u.nav.env import NATIVE_GAMES, default_state_path
 
-Bridge = MGBAMultiBridge | DeSmuMEBridge
+Bridge = MGBAMultiBridge | DeSmuMEBridge | MelonDSBridge
 
 
 def to_rgb(frame: NDArray[np.uint32]) -> NDArray[np.uint8]:
@@ -111,14 +112,13 @@ def run_intro(spec: GameSpec, frames: int, every: int, out: Path, period: int = 
     bridge = make_bridge(spec)
     out.mkdir(parents=True, exist_ok=True)
     images: list[tuple[str, Path]] = []
-    nds = isinstance(bridge, DeSmuMEBridge)
+    nds = bridge.spec.console == "nds"
     try:
         for frame in range(frames):
             phase, pulse = frame % period, frame // period
             tapping = nds and nds_pulse(pulse) == NDS_TAP_PULSE
             bridge.set_hardware_keys(0 if tapping else intro_keys(frame, period, nds=nds))
-            if tapping:  # the intro driver may touch the screen; the agent never does
-                assert isinstance(bridge, DeSmuMEBridge)
+            if tapping and not isinstance(bridge, MGBAMultiBridge):  # intro driver only; the agent never touches
                 if phase == 0:
                     bridge.touch(*NDS_TAPS[(pulse // 7) % len(NDS_TAPS)])
                 elif phase == 10:
@@ -265,7 +265,8 @@ def main(argv: list[str] | None = None) -> None:
         return
     spec = game(args.game)
     if args.command == "intro":
-        print(run_intro(spec, args.frames, args.every, GAL_ARTIFACTS / "intro" / spec.key))
+        suffix = "_melonds" if spec.console == "nds" and nds_backend() == "melonds" else ""  # states differ per emulator
+        print(run_intro(spec, args.frames, args.every, GAL_ARTIFACTS / "intro" / f"{spec.key}{suffix}"))
     elif args.command == "pick":
         print(pick_state(spec, args.state))
     elif args.command == "verify":

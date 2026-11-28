@@ -13,7 +13,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ares_u.gal.backends import (GBA_A, GBA_B, GBA_DOWN, GBA_LEFT, GBA_RIGHT, GBA_START, GBA_UP, DeSmuMEBridge,
+from ares_u.gal.backends import (MGBAMultiBridge, GBA_A, GBA_B, GBA_DOWN, GBA_LEFT, GBA_RIGHT, GBA_START, GBA_UP, DeSmuMEBridge,
                                  make_bridge)
 from ares_u.gal.games import GAL_ARTIFACTS, game
 from scripts.ares_u_gal import NDS_TAPS, contact_sheet, intro_keys, nds_pulse, NDS_TAP_PULSE, save_png
@@ -32,7 +32,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--period", type=int, default=24)
     args = parser.parse_args(argv)
     spec = game(args.game)
-    out = GAL_ARTIFACTS / "intro" / f"{spec.key}_assisted"
+    from ares_u.gal.backends import nds_backend
+    suffix = "_melonds" if spec.console == "nds" and nds_backend() == "melonds" else ""
+    out = GAL_ARTIFACTS / "intro" / f"{spec.key}{suffix}_assisted"
     out.mkdir(parents=True, exist_ok=True)
     bridge = make_bridge(spec)
     images: list[tuple[str, Path]] = []
@@ -45,13 +47,12 @@ def main(argv: list[str] | None = None) -> None:
             bridge.set_hardware_keys(0)
             for _ in range(30):
                 bridge.step_frame()
-        nds = isinstance(bridge, DeSmuMEBridge)
+        nds = bridge.spec.console == "nds"
         for frame in range(args.frames):
             phase, pulse = frame % args.period, frame // args.period
             tapping = nds and nds_pulse(pulse) == NDS_TAP_PULSE
             bridge.set_hardware_keys(0 if tapping else intro_keys(frame, args.period, nds=nds))
-            if tapping:
-                assert isinstance(bridge, DeSmuMEBridge)
+            if tapping and not isinstance(bridge, MGBAMultiBridge):
                 if phase == 0:
                     bridge.touch(*NDS_TAPS[(pulse // 7) % len(NDS_TAPS)])
                 elif phase == 10:

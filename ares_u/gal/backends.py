@@ -15,12 +15,15 @@ import ctypes
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from numpy.typing import NDArray
 
 from .games import ROOT, CoordSpec, Field, GameSpec
+
+if TYPE_CHECKING:
+    from .melonds import MelonDSBridge
 
 MULTI_DLL = ROOT / "native" / "build_multi" / "ares_mgba_multi.dll"
 MAX_W, MAX_H = 256, 224
@@ -213,7 +216,20 @@ def read_cell(coords: CoordSpec, read_field: Any) -> dict[str, int]:
             "y": int(read_field(coords.y))}
 
 
-def make_bridge(spec: GameSpec) -> MGBAMultiBridge | DeSmuMEBridge:
+def nds_backend() -> str:
+    """NDS emulator: ``desmume`` (default, py-desmume) or ``melonds`` (env ARES_NDS_BACKEND=melonds)."""
+    return os.environ.get("ARES_NDS_BACKEND", "desmume").lower()
+
+
+def make_bridge(spec: GameSpec) -> "MGBAMultiBridge | DeSmuMEBridge | MelonDSBridge":
+    """GB/GBC/GBA -> MGBAMultiBridge; NDS -> DeSmuMEBridge or MelonDSBridge (see ``nds_backend``).
+
+    The two NDS backends have the same interface but incompatible savestates.
+    """
     if spec.console == "nds":
+        if nds_backend() == "melonds":
+            from ares_u.gal.melonds import MelonDSBridge
+
+            return MelonDSBridge(spec)
         return DeSmuMEBridge(spec)
     return MGBAMultiBridge(spec)
