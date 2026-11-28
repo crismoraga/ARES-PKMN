@@ -1293,6 +1293,9 @@ class AresAutonomousOrchestrator:
                 pre_battle = self._last_directive.get("pre_battle")
                 if pre_battle:
                     self.planner.preparation.record_restore(str(pre_battle))
+                    # Timeline-independent: a rewind must not reset the restore loop breaker.
+                    self._lessons_dirty = True
+                    self._save_lessons(force=True)
                 self._record("party_healed", members=len(party), pre_battle=pre_battle or None)
             self._party_was_hurt = not healthy
 

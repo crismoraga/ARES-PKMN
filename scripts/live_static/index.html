@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ARES en vivo</title>
+  <meta name="description" content="Panel en vivo de los agentes ARES: partidas, progreso, razonamiento en combate y aprendizaje entre juegos.">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/" aria-label="ARES en vivo, inicio">
+      <span class="logo" aria-hidden="true"></span>
+      <span><b>ARES</b><small>agente Pokémon universal · en vivo</small></span>
+    </a>
+    <nav class="tabs" aria-label="Secciones">
+      <a href="#/" data-page="live">En vivo</a>
+      <a href="#/progreso" data-page="progress">Progreso</a>
+      <a href="#/inteligencia" data-page="intel">Inteligencia</a>
+      <a href="#/liga" data-page="league">Liga</a>
+      <a href="#/conocimiento" data-page="knowledge">Conocimiento</a>
+    </nav>
+    <div class="ticker" id="ticker" aria-live="polite"></div>
+    <div class="topbar-right">
+      <label class="toggle" title="Mostrar las ejecuciones simuladas por scripts.live_demo_publisher">
+        <input type="checkbox" id="show-demo" checked> simulados
+      </label>
+      <div class="conn" id="conn"><span class="dot"></span><span class="txt">conectando…</span></div>
+    </div>
+  </header>
+
+  <main id="app">
+    <section class="page" id="page-live" aria-labelledby="live-title">
+      <div class="page-head">
+        <div>
+          <h1 id="live-title">Agentes jugando ahora</h1>
+          <p>Pantalla del emulador, objetivo actual, equipo, decisión de combate con su razonamiento y progreso medido desde la RAM del juego.</p>
+        </div>
+      </div>
+      <div id="live-grid" class="grid-runs"></div>
+      <div id="live-empty" hidden></div>
+    </section>
+
+    <section class="page" id="page-run" aria-live="off"></section>
+
+    <section class="page" id="page-progress" aria-labelledby="progress-title">
+      <div class="page-head">
+        <div>
+          <h1 id="progress-title">Progreso de cada partida</h1>
+          <p>Hitos, medallas y mapas a lo largo de la partida (history.jsonl de cada ejecución, submuestreado conservando cada cambio).</p>
+        </div>
+      </div>
+      <div class="filters" id="progress-filters"></div>
+      <div class="panels">
+        <div class="panel span-all"><h2 id="race-title">Carrera de progreso</h2><div class="sub" id="race-sub"></div><div id="race-legend" class="legend"></div><div class="chart" id="race-chart"></div>
+          <details class="table-view"><summary>Ver tabla</summary><div class="table-scroll" id="race-table"></div></details></div>
+      </div>
+      <div class="panels" id="progress-multiples" style="margin-top:16px"></div>
+    </section>
+
+    <section class="page" id="page-intel" aria-labelledby="intel-title">
+      <div class="page-head">
+        <div>
+          <h1 id="intel-title">Inteligencia a lo largo del tiempo</h1>
+          <p>¿Juega mejor cada juego nuevo? Cada métrica sale de los datos publicados por las propias ejecuciones, en el orden en que se jugaron.</p>
+        </div>
+      </div>
+      <div id="intel-demo"></div>
+      <div class="tiles" id="intel-tiles"></div>
+      <div class="narrative" id="intel-narrative" hidden></div>
+      <div class="panels">
+        <div class="panel"><h2>Fotogramas por hito</h2><div class="sub">Por juego, en orden de juego · menos es mejor</div><div class="chart" id="intel-fpm"></div></div>
+        <div class="panel"><h2>Tasa de victorias en combate</h2><div class="sub">Acumulada frente a fotogramas emulados (muestreo del panel cada 5 s)</div><div id="intel-wr-legend" class="legend"></div><div class="chart" id="intel-wr"></div></div>
+        <div class="panel"><h2>Atascos por hora de juego</h2><div class="sub">Episodios de atasco por hora de juego emulada · menos es mejor</div><div class="chart" id="intel-stalls"></div></div>
+        <div class="panel"><h2>Conocimiento heredado y aprendido</h2><div class="sub">Elementos de conocimiento al empezar (heredados de juegos anteriores) y aprendidos en cada juego</div><div class="legend" id="intel-kn-legend"></div><div class="chart" id="intel-knowledge"></div></div>
+        <div class="panel span-all"><h2>Tabla de métricas</h2><div class="sub">Todos los valores medidos; «—» significa sin datos suficientes</div><div class="table-scroll" id="intel-table"></div></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-league" aria-labelledby="league-title">
+      <div class="page-head">
+        <div>
+          <h1 id="league-title">Liga de rivales</h1>
+          <p>Rivales con estilos de combate distintos, su Elo, el cara a cara entre todos y el campeón frente al cerebro E1.</p>
+        </div>
+        <div class="seg" id="league-source"></div>
+      </div>
+      <div id="league-body"></div>
+    </section>
+
+    <section class="page" id="page-knowledge" aria-labelledby="knowledge-title">
+      <div class="page-head">
+        <div>
+          <h1 id="knowledge-title">Conocimiento aprendido</h1>
+          <p>Lo que los agentes han aprendido jugando (por ejemplo la tabla de tipos deducida de los mensajes de combate), comprobado contra la tabla real de los juegos.</p>
+        </div>
+      </div>
+      <div class="filters" id="knowledge-sources"></div>
+      <div id="knowledge-body"></div>
+    </section>
+  </main>
+
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+
+  <script src="/static/util.js"></script>
+  <script src="/static/charts.js"></script>
+  <script src="/static/live.js"></script>
+  <script src="/static/pages.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

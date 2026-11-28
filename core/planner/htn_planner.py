@@ -268,6 +268,10 @@ class HTNCampaignPlanner:
         self.shop_cooldown_until = 0
         self.wants_balls = True
         self._restoring_for = ""
+        # Far-trip rule: estimated walk (tile units) from a map to its nearest
+        # Pokemon Center, per (objective, map); and the last engage-as-is note.
+        self._restore_trip_cache: dict[tuple[str, MapKey], float] = {}
+        self.last_engage_note = ""
         # Learned from defeats: attack types that counter an objective's roster
         # and catchable species carrying them (set by the orchestrator).
         self.learned_counters: dict[str, list[int]] = {}

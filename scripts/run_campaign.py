@@ -21,6 +21,7 @@ from typing import BinaryIO, cast
 import torch
 
 from core.bridge.ffi_mgba import NativeLibMGBABridge
+from core.campaign_live import CampaignLivePublisher
 from core.game_data import Game, ROM_NAMES, ROOT
 from core.orchestrator import AresAutonomousOrchestrator
 from core.runtime_view import campaign_liveness, nested_mapping, process_identity, read_campaign_status
@@ -295,6 +296,8 @@ def _run_attempt(game: Game, backend: str, directory: Path, *, resume: bool,
     cleanup_errors: list[str] = []
     last_publish = 0.0
     recorder = TelemetryRecorder(directory)
+    # Dashboard feed (artifacts/live/campaign-<game>/) only for the genuine cartridge run.
+    live = CampaignLivePublisher(game) if backend == "native" and os.environ.get("ARES_LIVE_STATUS", "1") != "0" else None
     final_telemetry: dict[str, object] = {}
     try:
         _write_heartbeat(directory, "starting", 0, restart_count)
@@ -330,6 +333,8 @@ def _run_attempt(game: Game, backend: str, directory: Path, *, resume: bool,
                 _write_heartbeat(directory, "running", controller.bridge.frame_count, restart_count)
                 _publish_live(controller, directory)
                 recorder.sample(controller)
+                if live is not None:
+                    live.maybe_publish(controller)
                 last_publish = time.monotonic()
                 checkpoint_request = directory / "checkpoint.request"
                 stop_request = directory / "stop.request"
@@ -369,6 +374,9 @@ def _run_attempt(game: Game, backend: str, directory: Path, *, resume: bool,
                 recorder.sample(controller, force=True)
                 _publish_live(controller, directory, running=False,
                               error="" if failure is None else f"{type(failure).__name__}: {failure}")
+                if live is not None:
+                    live.maybe_publish(controller, force=True, running=False,
+                                       error="" if failure is None else f"{type(failure).__name__}: {failure}")
             except Exception as error:
                 cleanup_errors.append(f"telemetry: {type(error).__name__}: {error}")
             finally:

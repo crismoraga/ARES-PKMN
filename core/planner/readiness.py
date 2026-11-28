@@ -37,6 +37,16 @@ class PreparationRecord:
 ENGAGE_HP_FRACTION = 0.85
 ENGAGE_PP_FRACTION = 0.5
 LOW_PP_FRACTION = 0.25
+# A pre-battle restore is a round trip. When the nearest Pokemon Center lies far
+# behind (a cave walked back floor by floor, with wild battles both ways) the
+# trip costs more HP and time than it buys, and repeating it loops forever
+# (Mt. Moon B2F -> Route 4 center -> B2F). With the lead still in fighting
+# shape the boss is engaged as is; healing items in the bag lower the bar
+# because the battle policy can use them mid-fight.
+FAR_RESTORE_TRIP = 80.0
+FAR_TRIP_HP_FRACTION = 0.5
+FAR_TRIP_HP_WITH_ITEMS = 0.35
+FAR_TRIP_ITEM_HP = 40
 MAX_RESTORES_PER_ATTEMPT = 3
 
 
@@ -124,6 +134,34 @@ class CampaignPreparationPolicy:
             return f"Revive fainted team members before {objective}"
         return None
 
+    def far_trip_engage_reason(self, objective: str, party: Sequence[Mapping[str, Any]],
+                               move_info: Callable[[int], tuple[int, int, int]],
+                               species_types: Callable[[int], Sequence[int]],
+                               healing_hp: int = 0) -> str | None:
+        """Cheap half of the far-trip rule: is the lead fit to fight without the trip?
+
+        Returns a reason to engage as is, or None when a restore is required anyway
+        (lead too hurt, best attacks nearly empty, or a loss already showed that
+        engaging hurt fails against this objective). The caller still has to
+        establish that the trip is long (``FAR_RESTORE_TRIP``).
+        """
+        record = self.records.get(objective)
+        if record is not None and record.unprepared_defeats:
+            return None  # learned: entering this fight hurt already lost it once
+        healthy = [mon for mon in party if int(mon["hp"]) > 0 and not mon.get("is_egg", False)]
+        if not healthy:
+            return None
+        lead = max(healthy, key=lambda mon: (int(mon["level"]), int(mon["maxHP"])))
+        fraction_hp = int(lead["hp"]) / max(1, int(lead["maxHP"]))
+        fraction_pp, attacks = best_attack_pp(lead, move_info, species_types(int(lead["species"])))
+        if attacks and fraction_pp < LOW_PP_FRACTION:
+            return None
+        items = healing_hp >= FAR_TRIP_ITEM_HP
+        if fraction_hp < (FAR_TRIP_HP_WITH_ITEMS if items else FAR_TRIP_HP_FRACTION):
+            return None
+        return (f"Pokemon Center far behind; engage {objective} with the lead at {round(100 * fraction_hp)}% HP"
+                + (f" and {healing_hp} HP of healing items" if items else ""))
+
     def assess(self, objective: str, recommended: int, party: Sequence[Mapping[str, Any]],
                required_types: Sequence[int], move_metadata: Callable[[int], tuple[int, int]]) -> BattleReadiness:
         if recommended <= 0:
@@ -197,9 +235,14 @@ class CampaignPreparationPolicy:
 
     def lessons_state(self) -> dict[str, Any]:
         """Timeline-independent part: what each objective has cost so far."""
+        # Restores spent since the last defeat survive rewinds and restarts, so
+        # the MAX_RESTORES_PER_ATTEMPT loop breaker cannot be reset by a stall
+        # recovery that rewinds to before the restores ("restores_defeats" ties
+        # the count to the defeat it follows).
         return {name: {"retry_level": record.retry_level, "defeats": record.defeats,
-                       "unprepared_defeats": record.unprepared_defeats}
-                for name, record in self.records.items() if record.defeats}
+                       "unprepared_defeats": record.unprepared_defeats,
+                       "restores": record.restores, "restores_defeats": record.defeats}
+                for name, record in self.records.items() if record.defeats or record.restores}
 
     def merge_lessons(self, lessons: Mapping[str, Any]) -> None:
         for name, row in list(lessons.items())[:512]:
@@ -212,3 +255,7 @@ class CampaignPreparationPolicy:
             record.retry_level = max(record.retry_level, min(100, int(values["retry_level"] or 0)))
             record.defeats = max(record.defeats, int(values["defeats"] or 0))
             record.unprepared_defeats = max(record.unprepared_defeats, int(values["unprepared_defeats"] or 0))
+            restores, restores_defeats = row.get("restores", 0), row.get("restores_defeats", -1)
+            if (type(restores) is int and type(restores_defeats) is int and 0 <= restores <= 10_000 and
+                    restores_defeats == record.defeats):
+                record.restores = max(record.restores, restores)
